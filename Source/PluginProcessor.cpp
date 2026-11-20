@@ -26,14 +26,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
+    // ADSR
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("attack", "Attack", 0.001f, 2.0f, 0.01f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("decay", "Decay", 0.001f, 2.0f, 0.1f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("sustain", "Sustain", 0.0f, 1.0f, 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("release", "Release", 0.001f, 3.0f, 0.1f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("volume", "Volume", 0.0f, 1.0f, 0.8f));
     
+    // Mixer / Oscillators
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("volume", "Volume", 0.0f, 1.0f, 0.8f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Level", "Osc 2 Level", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Detune", "Osc 2 Detune", -12.0f, 12.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("subLevel", "Sub Level", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("noiseLevel", "Noise Level", 0.0f, 1.0f, 0.0f));
+    
+    // Waveforms
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform", "Waveform", waveforms, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1", "Osc 1 Waveform", waveforms, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform2", "Osc 2 Waveform", waveforms, 1));
 
     return { params.begin(), params.end() };
 }
@@ -45,11 +54,29 @@ void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samples
     {
         voice.adsr.setSampleRate (sampleRate);
         voice.active = false;
-        voice.phase = 0.0;
     }
 }
 
 void HuntericeAbyssAudioProcessor::releaseResources() {}
+
+// Вспомогательная функция для генерации волны
+inline float generateWaveform (float phase, HuntericeAbyssAudioProcessor::Waveform wf)
+{
+    switch (wf)
+    {
+        case HuntericeAbyssAudioProcessor::Waveform::Sine:
+            return std::sin (2.0f * juce::MathConstants<float>::pi * phase);
+        case HuntericeAbyssAudioProcessor::Waveform::Saw:
+            return 2.0f * phase - 1.0f;
+        case HuntericeAbyssAudioProcessor::Waveform::Square:
+            return (phase < 0.5f) ? 1.0f : -1.0f;
+        case HuntericeAbyssAudioProcessor::Waveform::Triangle:
+            if (phase < 0.25f)      return 4.0f * phase;
+            else if (phase < 0.75f) return 2.0f - 4.0f * phase;
+            else                    return 4.0f * phase - 4.0f;
+    }
+    return 0.0f;
+}
 
 void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
@@ -65,8 +92,16 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     float sustain = parameters.getRawParameterValue ("sustain")->load();
     float release = parameters.getRawParameterValue ("release")->load();
     float volume = parameters.getRawParameterValue ("volume")->load();
-    int waveformIndex = static_cast<int> (parameters.getRawParameterValue ("waveform")->load());
-    currentWaveform = static_cast<Waveform> (juce::jlimit (0, 3, waveformIndex));
+    
+    float osc2Level = parameters.getRawParameterValue ("osc2Level")->load();
+    float osc2Detune = parameters.getRawParameterValue ("osc2Detune")->load();
+    float subLevel = parameters.getRawParameterValue ("subLevel")->load();
+    float noiseLevel = parameters.getRawParameterValue ("noiseLevel")->load();
+    
+    int wf1 = static_cast<int> (parameters.getRawParameterValue ("waveform1")->load());
+    int wf2 = static_cast<int> (parameters.getRawParameterValue ("waveform2")->load());
+    currentWaveform1 = static_cast<Waveform> (juce::jlimit (0, 3, wf1));
+    currentWaveform2 = static_cast<Waveform> (juce::jlimit (0, 3, wf2));
 
     for (auto& voice : voices)
     {
@@ -77,11 +112,9 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         voice.adsr.setParameters (voice.adsrParams);
     }
 
-    // 1. Обработка MIDI
     for (const auto metadata : midiMessages)
     {
         auto msg = metadata.getMessage();
-        
         if (msg.isNoteOn() && msg.getVelocity() > 0)
         {
             int note = msg.getNoteNumber();
@@ -89,36 +122,23 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             
             int voiceIndex = -1;
             for (int i = 0; i < MAX_VOICES; ++i)
-            {
-                if (!voices[i].active)
-                {
-                    voiceIndex = i;
-                    break;
-                }
-            }
+                if (!voices[i].active) { voiceIndex = i; break; }
             
-            // Voice Stealing: если все заняты, берем первый (можно улучшить до oldest)
-            if (voiceIndex == -1)
-                voiceIndex = 0;
+            if (voiceIndex == -1) voiceIndex = 0; // Voice stealing
                 
-            voices[voiceIndex].noteOn (freq, currentSampleRate);
+            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune);
             voices[voiceIndex].midiNote = note;
         }
         else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
         {
             int note = msg.getNoteNumber();
             for (int i = 0; i < MAX_VOICES; ++i)
-            {
                 if (voices[i].active && voices[i].midiNote == note)
-                {
                     voices[i].noteOff();
-                }
-            }
         }
     }
     midiMessages.clear();
 
-    // 2. Генерация звука (полифоническое суммирование)
     for (int channel = 0; channel < totalNumOutputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer (channel);
@@ -129,70 +149,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
             for (int v = 0; v < MAX_VOICES; ++v)
             {
-                if (!voices[v].active)
-                    continue;
+                if (!voices[v].active) continue;
 
-                float env = voices[v].adsr.getNextSample();
-                
-                // ИСПРАВЛЕНИЕ: используем публичный метод isActive() вместо приватного getState()
-                if (env <= 0.0f && !voices[v].adsr.isActive())
-                {
-                    voices[v].active = false;
-                    continue;
-                }
-
-                float osc = 0.0f;
-                switch (currentWaveform)
-                {
-                    case Waveform::Sine:
-                        osc = std::sin (2.0f * juce::MathConstants<float>::pi * (float)voices[v].phase);
-                        break;
-                    case Waveform::Saw:
-                        osc = 2.0f * (float)voices[v].phase - 1.0f;
-                        break;
-                    case Waveform::Square:
-                        osc = ((float)voices[v].phase < 0.5f) ? 1.0f : -1.0f;
-                        break;
-                    case Waveform::Triangle:
-                        if (voices[v].phase < 0.25)      osc = 4.0f * (float)voices[v].phase;
-                        else if (voices[v].phase < 0.75) osc = 2.0f - 4.0f * (float)voices[v].phase;
-                        else                             osc = 4.0f * (float)voices[v].phase - 4.0f;
-                        break;
-                }
-                
-                mix += osc * env;
-                
-                voices[v].phase += voices[v].phaseIncrement;
-                if (voices[v].phase >= 1.0)
-                    voices[v].phase -= 1.0;
-            }
-
-            channelData[sample] = mix * volume;
-        }
-    }
-}
-
-juce::AudioProcessorEditor* HuntericeAbyssAudioProcessor::createEditor()
-{
-    return new HuntericeAbyssAudioProcessorEditor (*this, parameters);
-}
-
-void HuntericeAbyssAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
-{
-    auto state = parameters.copyState();
-    std::unique_ptr<juce::XmlElement> xml (state.createXml());
-    copyXmlToBinary (*xml, destData);
-}
-
-void HuntericeAbyssAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
-{
-    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState.get() != nullptr)
-        if (xmlState->hasTagName (parameters.state.getType()))
-            parameters.replaceState (juce::ValueTree::fromXml (*xmlState));
-}
-
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new HuntericeAbyssAudioProcessor();
-}
+                float env =
