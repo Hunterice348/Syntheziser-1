@@ -60,7 +60,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // Чтение параметров (сглаживание можно добавить позже, пока читаем напрямую)
     float attack = parameters.getRawParameterValue ("attack")->load();
     float decay = parameters.getRawParameterValue ("decay")->load();
     float sustain = parameters.getRawParameterValue ("sustain")->load();
@@ -69,7 +68,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     int waveformIndex = static_cast<int> (parameters.getRawParameterValue ("waveform")->load());
     currentWaveform = static_cast<Waveform> (juce::jlimit (0, 3, waveformIndex));
 
-    // Обновляем параметры ADSR для всех голосов
     for (auto& voice : voices)
     {
         voice.adsrParams.attack = attack;
@@ -89,7 +87,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             int note = msg.getNoteNumber();
             float freq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
             
-            // Поиск свободного голоса
             int voiceIndex = -1;
             for (int i = 0; i < MAX_VOICES; ++i)
             {
@@ -110,7 +107,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
         {
             int note = msg.getNoteNumber();
-            // Ищем голос с этой нотой и отправляем Note Off
             for (int i = 0; i < MAX_VOICES; ++i)
             {
                 if (voices[i].active && voices[i].midiNote == note)
@@ -138,8 +134,8 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
                 float env = voices[v].adsr.getNextSample();
                 
-                // Если огибающая закончилась, деактивируем голос
-                if (env <= 0.0f && voices[v].adsr.getState() == juce::ADSR::State::idle)
+                // ИСПРАВЛЕНИЕ: используем публичный метод isActive() вместо приватного getState()
+                if (env <= 0.0f && !voices[v].adsr.isActive())
                 {
                     voices[v].active = false;
                     continue;
