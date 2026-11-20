@@ -28,6 +28,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("sustain", "Sustain", 0.0f, 1.0f, 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("release", "Release", 0.001f, 3.0f, 0.1f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("volume", "Volume", 0.0f, 1.0f, 0.8f));
+    
+    // Добавляем параметр выбора формы волны
+    juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
+    params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform", "Waveform", waveforms, 0));
 
     return { params.begin(), params.end() };
 }
@@ -47,11 +51,9 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // Очистка буфера
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // Обновление параметров из GUI в реальном времени
     adsrParams.attack = parameters.getRawParameterValue ("attack")->load();
     adsrParams.decay = parameters.getRawParameterValue ("decay")->load();
     adsrParams.sustain = parameters.getRawParameterValue ("sustain")->load();
@@ -59,8 +61,9 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     adsr.setParameters (adsrParams);
 
     float volume = parameters.getRawParameterValue ("volume")->load();
+    int waveformIndex = static_cast<int> (parameters.getRawParameterValue ("waveform")->load());
+    currentWaveform = static_cast<Waveform> (juce::jlimit (0, 3, waveformIndex));
 
-    // Обработка MIDI
     for (const auto metadata : midiMessages)
     {
         auto msg = metadata.getMessage();
@@ -68,7 +71,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         {
             currentNoteFreq = (float) juce::MidiMessage::getMidiNoteInHertz (msg.getNoteNumber());
             phaseIncrement = currentNoteFreq / currentSampleRate;
-            currentPhase = 0.0; // Сброс фазы для новой ноты
+            currentPhase = 0.0; 
             adsr.noteOn();
         }
         else if (msg.isNoteOff())
@@ -78,7 +81,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     }
     midiMessages.clear();
 
-    // Генерация звука (поканально)
     for (int channel = 0; channel < totalNumOutputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer (channel);
@@ -86,9 +88,26 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float envelopeValue = adsr.getNextSample();
+            float oscillatorOutput = 0.0f;
 
-            // Простой синусоидальный осциллятор с отслеживанием фазы
-            float oscillatorOutput = std::sin (2.0f * juce::MathConstants<float>::pi * (float)currentPhase);
+            // DSP Генерация форм волны
+            switch (currentWaveform)
+            {
+                case Waveform::Sine:
+                    oscillatorOutput = std::sin (2.0f * juce::MathConstants<float>::pi * (float)currentPhase);
+                    break;
+                case Waveform::Saw:
+                    oscillatorOutput = 2.0f * (float)currentPhase - 1.0f;
+                    break;
+                case Waveform::Square:
+                    oscillatorOutput = ((float)currentPhase < 0.5f) ? 1.0f : -1.0f;
+                    break;
+                case Waveform::Triangle:
+                    if (currentPhase < 0.25)      oscillatorOutput = 4.0f * (float)currentPhase;
+                    else if (currentPhase < 0.75)  oscillatorOutput = 2.0f - 4.0f * (float)currentPhase;
+                    else                           oscillatorOutput = 4.0f * (float)currentPhase - 4.0f;
+                    break;
+            }
             
             currentPhase += phaseIncrement;
             if (currentPhase >= 1.0)
@@ -119,7 +138,6 @@ void HuntericeAbyssAudioProcessor::setStateInformation (const void* data, int si
             parameters.replaceState (juce::ValueTree::fromXml (*xmlState));
 }
 
-// Точка входа для VST3
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new HuntericeAbyssAudioProcessor();
