@@ -1,123 +1,95 @@
 name: Build HUNTERICE ABYSS VST3
 
 on:
-  # Ручной запуск workflow
   workflow_dispatch:
-  
-  # Автоматический запуск при push в main/master
   push:
     branches: [ main, master, develop ]
-  
-  # Автоматический запуск при создании pull request
   pull_request:
     branches: [ main, master ]
 
 env:
   BUILD_TYPE: Release
   PLUGIN_NAME: "HUNTERICE ABYSS"
-  VST3_EXTENSION: ".vst3"
 
 jobs:
   build-windows:
     name: Build VST3 on Windows x64
-    runs-on: windows-latest
+    runs-on: windows-2022
     
     steps:
-    # Шаг 1: Клонирование репозитория
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         submodules: recursive
         fetch-depth: 0
 
-    # Шаг 2: Установка CMake
-    - name: Setup CMake
-      uses: lukka/get-cmake@latest
+    - name: Install Ninja
+      uses: seanmiddleditch/gha-setup-ninja@master
 
-    # Шаг 3: Настройка Visual Studio Build Tools
-    - name: Setup Visual Studio Build Tools
-      uses: microsoft/setup-msbuild@v2
+    - name: Setup MSVC Developer Command Prompt
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
 
-    # Шаг 4: Кэширование зависимостей CMake (JUCE)
     - name: Cache CMake dependencies
       uses: actions/cache@v4
       with:
         path: |
-          ~/.cache/CMake
           build/_deps
+          ~/.cache/CMake
         key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
         restore-keys: |
           ${{ runner.os }}-cmake-
 
-    # Шаг 5: Создание директории сборки
-    - name: Create build directory
-      run: mkdir build
-
-    # Шаг 6: Конфигурация CMake
-    - name: Configure CMake
-      working-directory: build
+    - name: Configure CMake with Ninja
       run: |
-        cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
       shell: pwsh
 
-    # Шаг 7: Сборка проекта
     - name: Build project
-      working-directory: build
       run: |
-        cmake --build . --config ${{ env.BUILD_TYPE }} --parallel
+        cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
       shell: pwsh
 
-    # Шаг 8: Проверка наличия VST3 файла
-    - name: Verify VST3 build output
-      working-directory: build
+    - name: Find and verify VST3 file
       run: |
         Write-Host "Searching for VST3 file..."
-        $vst3Path = Get-ChildItem -Path . -Recurse -Filter "*.vst3" | Select-Object -First 1
+        $vst3Path = Get-ChildItem -Path build -Recurse -Filter "*.vst3" | Select-Object -First 1
         if ($vst3Path) {
-          Write-Host "VST3 file found: $($vst3Path.FullName)"
-          Write-Host "File size: $($vst3Path.Length) bytes"
+          Write-Host "✓ VST3 file found: $($vst3Path.FullName)"
+          Write-Host "✓ File size: $($vst3Path.Length) bytes"
+          Write-Host "VST3_PATH=$($vst3Path.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
         } else {
-          Write-Error "VST3 file not found!"
+          Write-Error "✗ VST3 file not found!"
+          Get-ChildItem -Path build -Recurse | Select-Object FullName
           exit 1
         }
       shell: pwsh
 
-    # Шаг 9: Создание директории для артефактов
-    - name: Prepare artifact directory
-      working-directory: build
+    - name: Prepare artifact
       run: |
         New-Item -ItemType Directory -Force -Path "artifacts"
-        
-        # Найти VST3 файл
-        $vst3File = Get-ChildItem -Path . -Recurse -Filter "*.vst3" | Select-Object -First 1
-        
-        if ($vst3File) {
-          # Скопировать VST3 в директорию артефактов
-          Copy-Item -Path $vst3File.FullName -Destination "artifacts" -Recurse
-          Write-Host "VST3 copied to artifacts directory"
-        }
+        Copy-Item -Path "$env:VST3_PATH" -Destination "artifacts" -Recurse
+        Write-Host "✓ VST3 copied to artifacts directory"
       shell: pwsh
 
-    # Шаг 10: Создание ZIP архива
     - name: Create ZIP archive
-      working-directory: build/artifacts
+      working-directory: artifacts
       run: |
-        $zipName = "${{ env.PLUGIN_NAME }}-VST3-Windows-x64.zip"
+        $zipName = "HUNTERICE-ABYSS-VST3-Windows-x64.zip"
         Compress-Archive -Path "*.vst3" -DestinationPath $zipName -Force
-        Write-Host "Created ZIP: $zipName"
-        Write-Host "ZIP size: $((Get-Item $zipName).Length) bytes"
+        Write-Host "✓ Created ZIP: $zipName"
+        Write-Host "✓ ZIP size: $((Get-Item $zipName).Length) bytes"
       shell: pwsh
 
-    # Шаг 11: Загрузка артефактов сборки
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: HUNTERICE-ABYSS-VST3-Windows-x64
-        path: build/artifacts/*.zip
+        path: artifacts/*.zip
         retention-days: 30
         if-no-files-found: error
 
-    # Шаг 12: Загрузка логов сборки (при ошибке)
     - name: Upload build logs on failure
       if: failure()
       uses: actions/upload-artifact@v4
@@ -129,64 +101,18 @@ jobs:
           build/**/*.log
         retention-days: 7
 
-    # Шаг 13: Вывод информации о сборке
     - name: Build summary
       if: success()
       run: |
         Write-Host "=========================================="
-        Write-Host "BUILD SUCCESSFUL"
+        Write-Host "✓ BUILD SUCCESSFUL"
         Write-Host "=========================================="
         Write-Host "Plugin: ${{ env.PLUGIN_NAME }}"
         Write-Host "Platform: Windows x64"
         Write-Host "Configuration: ${{ env.BUILD_TYPE }}"
         Write-Host "Format: VST3"
         Write-Host "=========================================="
-        Write-Host "Artifact uploaded successfully"
-        Write-Host "Download from: Actions tab -> Artifacts"
-        Write-Host "=========================================="
-      shell: pwsh
-
-  # Дополнительная job для тестирования (опционально)
-  test-build:
-    name: Test Build Quality
-    runs-on: windows-latest
-    needs: build-windows
-    
-    steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: HUNTERICE-ABYSS-VST3-Windows-x64
-
-    - name: Verify artifact integrity
-      run: |
-        Write-Host "Verifying downloaded artifact..."
-        $zipFile = Get-ChildItem -Filter "*.zip" | Select-Object -First 1
-        if ($zipFile) {
-          Write-Host "Artifact found: $($zipFile.Name)"
-          Write-Host "Size: $($zipFile.Length) bytes"
-          
-          # Распаковать и проверить содержимое
-          Expand-Archive -Path $zipFile.FullName -DestinationPath "extracted" -Force
-          $vst3Files = Get-ChildItem -Path "extracted" -Recurse -Filter "*.vst3"
-          Write-Host "VST3 files in archive: $($vst3Files.Count)"
-          
-          if ($vst3Files.Count -gt 0) {
-            Write-Host "Artifact integrity verified successfully"
-          } else {
-            Write-Error "No VST3 files found in archive!"
-            exit 1
-          }
-        } else {
-          Write-Error "Artifact not found!"
-          exit 1
-        }
-      shell: pwsh
-
-    - name: Test summary
-      if: success()
-      run: |
-        Write-Host "=========================================="
-        Write-Host "BUILD QUALITY TEST PASSED"
+        Write-Host "✓ Artifact uploaded successfully"
+        Write-Host "✓ Download from: Actions tab -> Artifacts"
         Write-Host "=========================================="
       shell: pwsh
