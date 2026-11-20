@@ -52,13 +52,13 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         buffer.clear (i, 0, buffer.getNumSamples());
 
     // Обновление параметров из GUI в реальном времени
-    adsrParams.attack = *parameters.getRawParameterValue ("attack");
-    adsrParams.decay = *parameters.getRawParameterValue ("decay");
-    adsrParams.sustain = *parameters.getRawParameterValue ("sustain");
-    adsrParams.release = *parameters.getRawParameterValue ("release");
+    adsrParams.attack = parameters.getRawParameterValue ("attack")->load();
+    adsrParams.decay = parameters.getRawParameterValue ("decay")->load();
+    adsrParams.sustain = parameters.getRawParameterValue ("sustain")->load();
+    adsrParams.release = parameters.getRawParameterValue ("release")->load();
     adsr.setParameters (adsrParams);
 
-    auto volume = *parameters.getRawParameterValue ("volume");
+    float volume = parameters.getRawParameterValue ("volume")->load();
 
     // Обработка MIDI
     for (const auto metadata : midiMessages)
