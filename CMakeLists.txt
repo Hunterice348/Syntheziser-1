@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
-# Важно: указываем только CXX, так как JUCE плагинам C не нужен
 project(HUNTERICE_ABYSS VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Загрузка JUCE через FetchContent
 include(FetchContent)
 FetchContent_Declare(juce
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
@@ -12,6 +12,7 @@ FetchContent_Declare(juce
 )
 FetchContent_MakeAvailable(juce)
 
+# Определение цели плагина с явным указанием исходных файлов
 juce_add_plugin(HuntericeAbyss
     COMPANY_NAME "HUNTERICE"
     PLUGIN_NAME "ABYSS"
@@ -24,19 +25,19 @@ juce_add_plugin(HuntericeAbyss
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_NEEDS_KEYBOARD_FOCUS TRUE
+    SOURCES
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp
 )
 
-target_sources(HuntericeAbyss PRIVATE
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp
-)
-
+# Линковка необходимых модулей JUCE
 target_link_libraries(HuntericeAbyss PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_gui_extra
 )
 
+# Оптимизация: отключение ненужных функций для уменьшения размера и ускорения сборки
 target_compile_definitions(HuntericeAbyss PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
