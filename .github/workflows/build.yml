@@ -15,84 +15,91 @@ jobs:
   build-windows:
     name: Build VST3 on Windows x64
     runs-on: windows-2022
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        fetch-depth: 0
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
-    - name: Setup CMake
-      uses: lukka/get-cmake@latest
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
 
-    - name: Clean build directory (Garbage collection for fresh build)
-      run: |
-        if (Test-Path build) { Remove-Item -Recurse -Force build }
-        Write-Host "✓ Build directory cleaned"
-      shell: pwsh
+      - name: Clean build directory
+        run: |
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          Write-Host "✓ Build directory cleaned"
+        shell: pwsh
 
-    - name: Configure CMake
-      run: |
-        cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-      shell: pwsh
+      - name: Configure CMake
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        shell: pwsh
 
-    - name: Build Project
-      run: |
-        cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
-      shell: pwsh
+      - name: Build Project
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+        shell: pwsh
 
-    - name: Find and Verify VST3
-      run: |
-        Write-Host "Searching for VST3 file..."
-        $vst3Path = Get-ChildItem -Path build -Recurse -Filter "*.vst3" | Select-Object -First 1
-        if ($vst3Path) {
-          Write-Host "✓ VST3 file found: $($vst3Path.FullName)"
-          Write-Host "✓ File size: $($vst3Path.Length) bytes"
-          Write-Host "VST3_PATH=$($vst3Path.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-        } else {
-          Write-Error "✗ VST3 file not found!"
-          Get-ChildItem -Path build -Recurse | Select-Object FullName
-          exit 1
-        }
-      shell: pwsh
+      - name: Find VST3 Bundle
+        id: find_vst3
+        run: |
+          Write-Host "=== Поиск VST3 bundle ==="
+          
+          # Ищем папку .vst3 (JUCE создаёт bundle, а не файл)
+          $vst3Bundle = Get-ChildItem -Path build -Recurse -Directory -Filter "*.vst3" | Select-Object -First 1
+          
+          if ($vst3Bundle) {
+            Write-Host "✓ VST3 bundle найден: $($vst3Bundle.FullName)"
+            Write-Host "✓ Размер: $((Get-ChildItem -Path $vst3Bundle.FullName -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB) MB"
+            "VST3_PATH=$($vst3Bundle.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "VST3_NAME=$($vst3Bundle.Name)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            Write-Error "✗ VST3 bundle не найден!"
+            Write-Host "Содержимое build:"
+            Get-ChildItem -Path build -Recurse | Select-Object FullName
+            exit 1
+          }
+        shell: pwsh
 
-    - name: Prepare Artifact Directory
-      run: |
-        New-Item -ItemType Directory -Force -Path "artifacts"
-        Copy-Item -Path "$env:VST3_PATH" -Destination "artifacts" -Recurse
-        Write-Host "✓ VST3 copied to artifacts directory"
-      shell: pwsh
+      - name: Prepare Artifact Directory
+        run: |
+          New-Item -ItemType Directory -Force -Path "artifacts" | Out-Null
+          Copy-Item -Path "$env:VST3_PATH" -Destination "artifacts" -Recurse -Force
+          Write-Host "✓ VST3 скопирован в artifacts"
+          Write-Host "✓ Путь: $env:VST3_PATH"
+        shell: pwsh
 
-    - name: Create ZIP Archive
-      working-directory: artifacts
-      run: |
-        $zipName = "HUNTERICE-ABYSS-VST3-Windows-x64.zip"
-        Compress-Archive -Path "*.vst3" -DestinationPath $zipName -Force
-        Write-Host "✓ Created ZIP: $zipName"
-        Write-Host "✓ ZIP size: $((Get-Item $zipName).Length) bytes"
-      shell: pwsh
+      - name: Create ZIP Archive
+        working-directory: artifacts
+        run: |
+          $zipName = "HUNTERICE-ABYSS-VST3-Windows-x64.zip"
+          Compress-Archive -Path "./*" -DestinationPath $zipName -Force
+          Write-Host "✓ Создан ZIP: $zipName"
+          Write-Host "✓ Размер: $((Get-Item $zipName).Length / 1MB) MB"
+        shell: pwsh
 
-    - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: HUNTERICE-ABYSS-VST3-Windows-x64
-        path: artifacts/*.zip
-        retention-days: 30
-        if-no-files-found: error
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: HUNTERICE-ABYSS-VST3-Windows-x64
+          path: artifacts/*.zip
+          retention-days: 30
+          if-no-files-found: error
 
-    - name: Build Summary
-      if: success()
-      run: |
-        Write-Host "=========================================="
-        Write-Host "✓ BUILD SUCCESSFUL"
-        Write-Host "=========================================="
-        Write-Host "Plugin: ${{ env.PLUGIN_NAME }}"
-        Write-Host "Platform: Windows x64"
-        Write-Host "Configuration: ${{ env.BUILD_TYPE }}"
-        Write-Host "Format: VST3"
-        Write-Host "=========================================="
-        Write-Host "✓ Artifact uploaded successfully"
-        Write-Host "✓ Download from: Actions tab -> Artifacts"
-        Write-Host "=========================================="
-      shell: pwsh
+      - name: Build Summary
+        if: success()
+        run: |
+          Write-Host "=========================================="
+          Write-Host "✓ СБОРКА УСПЕШНА"
+          Write-Host "=========================================="
+          Write-Host "Плагин: ${{ env.PLUGIN_NAME }}"
+          Write-Host "Платформа: Windows x64"
+          Write-Host "Конфигурация: ${{ env.BUILD_TYPE }}"
+          Write-Host "Формат: VST3"
+          Write-Host "=========================================="
+          Write-Host "✓ Артефакт загружен"
+          Write-Host "✓ Скачайте из: Actions -> Artifacts"
+          Write-Host "=========================================="
+        shell: pwsh
