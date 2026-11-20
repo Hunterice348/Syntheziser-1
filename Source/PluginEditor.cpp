@@ -2,44 +2,37 @@
 #include "PluginEditor.h"
 
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
-    : AudioProcessorEditor (&p), audioProcessor (p)
+    : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
     setSize (600, 400);
-    setResizable(true, true);
-    setResizeLimits(400, 300, 1200, 800);
+    setLookAndFeel (&juce::LookAndFeel::getDefaultLookAndFeel());
 
-    // Заголовок
-    titleLabel.setText("HUNTERICE ABYSS", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(24.0f, juce::Font::bold));
-    titleLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    addAndMakeVisible(titleLabel);
+    auto setupSlider = [](juce::Slider& s) {
+        s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 20);
+    };
 
-    // Мастер-громкость
-    masterVolSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    masterVolSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 50, 20);
-    masterVolAttachment.reset(new SliderAttachment(vts, "masterVol", masterVolSlider));
-    addAndMakeVisible(masterVolSlider);
+    setupSlider (attackSlider);
+    setupSlider (decaySlider);
+    setupSlider (sustainSlider);
+    setupSlider (releaseSlider);
+    setupSlider (volumeSlider);
 
-    // Слайдеры огибающей ADSR
-    attackSlider.setSliderStyle(juce::Slider::LinearVertical);
-    attackSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 40, 20);
-    attackAttachment.reset(new SliderAttachment(vts, "attack", attackSlider));
-    addAndMakeVisible(attackSlider);
+    waveformBox.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
+    addAndMakeVisible (waveformBox);
 
-    decaySlider.setSliderStyle(juce::Slider::LinearVertical);
-    decaySlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 40, 20);
-    decayAttachment.reset(new SliderAttachment(vts, "decay", decaySlider));
-    addAndMakeVisible(decaySlider);
+    addAndMakeVisible (attackSlider);
+    addAndMakeVisible (decaySlider);
+    addAndMakeVisible (sustainSlider);
+    addAndMakeVisible (releaseSlider);
+    addAndMakeVisible (volumeSlider);
 
-    sustainSlider.setSliderStyle(juce::Slider::LinearVertical);
-    sustainSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 40, 20);
-    sustainAttachment.reset(new SliderAttachment(vts, "sustain", sustainSlider));
-    addAndMakeVisible(sustainSlider);
-
-    releaseSlider.setSliderStyle(juce::Slider::LinearVertical);
-    releaseSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 40, 20);
-    releaseAttachment.reset(new SliderAttachment(vts, "release", releaseSlider));
-    addAndMakeVisible(releaseSlider);
+    attackAttachment   = std::make_unique<Attachment> (parameters, "attack",   attackSlider);
+    decayAttachment    = std::make_unique<Attachment> (parameters, "decay",    decaySlider);
+    sustainAttachment  = std::make_unique<Attachment> (parameters, "sustain",  sustainSlider);
+    releaseAttachment  = std::make_unique<Attachment> (parameters, "release",  releaseSlider);
+    volumeAttachment   = std::make_unique<Attachment> (parameters, "volume",   volumeSlider);
+    waveformAttachment = std::make_unique<ComboBoxAttachment> (parameters, "waveform", waveformBox);
 }
 
 HuntericeAbyssAudioProcessorEditor::~HuntericeAbyssAudioProcessorEditor()
@@ -48,32 +41,28 @@ HuntericeAbyssAudioProcessorEditor::~HuntericeAbyssAudioProcessorEditor()
 
 void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    // Промышленный темно-графитовый фон
-    g.fillAll(juce::Colour::fromRGB(25, 25, 28)); 
-    
-    // Тонкая верхняя граница (темно-красная подсветка)
-    g.setColour(juce::Colour::fromRGB(139, 0, 0));
-    g.fillRect(0, 0, getWidth(), 4);
+    g.fillAll (juce::Colour (0xFF1E1E24)); // Тёмный фон HUNTERICE
 
-    g.setColour(juce::Colours::white);
+    g.setColour (juce::Colours::white);
+    g.setFont (juce::Font (24.0f, juce::Font::bold));
+    g.drawText ("HUNTERICE ABYSS", getLocalBounds().removeFromTop (40), juce::Justification::centred);
+
+    g.setColour (juce::Colour (0xFFB41E28)); // Тёмно-красный акцент
+    g.fillRect (0, 40, getWidth(), 2);
 }
 
 void HuntericeAbyssAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced(20);
+    auto area = getLocalBounds().reduced (20).removeFromTop (250);
     
-    titleLabel.setBounds(area.removeFromTop(40));
+    auto oscArea = area.removeFromLeft (150);
+    waveformBox.setBounds (oscArea.removeFromTop (30).reduced (10));
     
-    auto controlsArea = area.removeFromTop(200);
-    auto sliderArea = controlsArea.removeFromLeft(60);
+    auto envArea = area.removeFromLeft (300);
+    attackSlider.setBounds (envArea.removeFromLeft (70));
+    decaySlider.setBounds (envArea.removeFromLeft (70));
+    sustainSlider.setBounds (envArea.removeFromLeft (70));
+    releaseSlider.setBounds (envArea.removeFromLeft (70));
     
-    attackSlider.setBounds(sliderArea);
-    sliderArea.setX(sliderArea.getRight() + 10);
-    decaySlider.setBounds(sliderArea);
-    sliderArea.setX(sliderArea.getRight() + 10);
-    sustainSlider.setBounds(sliderArea);
-    sliderArea.setX(sliderArea.getRight() + 10);
-    releaseSlider.setBounds(sliderArea);
-
-    masterVolSlider.setBounds(area.removeFromRight(100).removeFromTop(100));
+    volumeSlider.setBounds (area.removeFromLeft (80));
 }
