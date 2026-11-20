@@ -17,7 +17,7 @@ public:
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 1.0; } // Для затухания ADSR
+    double getTailLengthSeconds() const override { return 1.0; }
     
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -33,9 +33,12 @@ private:
 
     juce::AudioProcessorValueTreeState parameters;
 
-    // DSP переменные синтезатора
+    // DSP переменные
     juce::ADSR adsr;
     juce::ADSR::Parameters adsrParams;
+    
+    enum class Waveform { Sine = 0, Saw, Square, Triangle };
+    Waveform currentWaveform = Waveform::Sine;
     
     double currentPhase = 0.0;
     double phaseIncrement = 0.0;
