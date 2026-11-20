@@ -26,6 +26,12 @@ jobs:
     - name: Setup CMake
       uses: lukka/get-cmake@latest
 
+    - name: Clean build directory (Garbage collection for fresh build)
+      run: |
+        if (Test-Path build) { Remove-Item -Recurse -Force build }
+        Write-Host "✓ Build directory cleaned"
+      shell: pwsh
+
     - name: Configure CMake
       run: |
         cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
@@ -74,17 +80,6 @@ jobs:
         path: artifacts/*.zip
         retention-days: 30
         if-no-files-found: error
-
-    - name: Upload Build Logs on Failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: |
-          build/CMakeFiles/CMakeOutput.log
-          build/CMakeFiles/CMakeError.log
-          build/**/*.log
-        retention-days: 7
 
     - name: Build Summary
       if: success()
