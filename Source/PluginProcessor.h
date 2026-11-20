@@ -17,7 +17,7 @@ public:
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 1.0; }
+    double getTailLengthSeconds() const override { return 2.0; } // Увеличено для корректного Release
     
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -33,16 +33,35 @@ private:
 
     juce::AudioProcessorValueTreeState parameters;
 
-    // DSP переменные
-    juce::ADSR adsr;
-    juce::ADSR::Parameters adsrParams;
+    // --- POLYPHONIC VOICE ENGINE ---
+    static constexpr int MAX_VOICES = 16;
     
+    struct Voice
+    {
+        bool active = false;
+        int midiNote = -1;
+        double phase = 0.0;
+        double phaseIncrement = 0.0;
+        juce::ADSR adsr;
+        juce::ADSR::Parameters adsrParams;
+
+        void noteOn (float frequency, double sampleRate)
+        {
+            active = true;
+            phaseIncrement = frequency / sampleRate;
+            phase = 0.0;
+            adsr.noteOn();
+        }
+
+        void noteOff()
+        {
+            adsr.noteOff();
+        }
+    };
+
+    std::array<Voice, MAX_VOICES> voices;
     enum class Waveform { Sine = 0, Saw, Square, Triangle };
     Waveform currentWaveform = Waveform::Sine;
-    
-    double currentPhase = 0.0;
-    double phaseIncrement = 0.0;
-    float currentNoteFreq = 440.0f;
     double currentSampleRate = 44100.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HuntericeAbyssAudioProcessor)
