@@ -12,11 +12,14 @@ HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
                    ),
        parameters (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
-    adsrParams.attack = 0.01f;
-    adsrParams.decay = 0.1f;
-    adsrParams.sustain = 0.5f;
-    adsrParams.release = 0.1f;
-    adsr.setParameters (adsrParams);
+    for (auto& voice : voices)
+    {
+        voice.adsrParams.attack = 0.01f;
+        voice.adsrParams.decay = 0.1f;
+        voice.adsrParams.sustain = 0.5f;
+        voice.adsrParams.release = 0.1f;
+        voice.adsr.setParameters (voice.adsrParams);
+    }
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor::createParameterLayout()
@@ -29,7 +32,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("release", "Release", 0.001f, 3.0f, 0.1f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("volume", "Volume", 0.0f, 1.0f, 0.8f));
     
-    // Добавляем параметр выбора формы волны
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform", "Waveform", waveforms, 0));
 
@@ -39,8 +41,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
 void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
-    adsr.setSampleRate (sampleRate);
-    currentPhase = 0.0;
+    for (auto& voice : voices)
+    {
+        voice.adsr.setSampleRate (sampleRate);
+        voice.active = false;
+        voice.phase = 0.0;
+    }
 }
 
 void HuntericeAbyssAudioProcessor::releaseResources() {}
@@ -54,66 +60,118 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    adsrParams.attack = parameters.getRawParameterValue ("attack")->load();
-    adsrParams.decay = parameters.getRawParameterValue ("decay")->load();
-    adsrParams.sustain = parameters.getRawParameterValue ("sustain")->load();
-    adsrParams.release = parameters.getRawParameterValue ("release")->load();
-    adsr.setParameters (adsrParams);
-
+    // Чтение параметров (сглаживание можно добавить позже, пока читаем напрямую)
+    float attack = parameters.getRawParameterValue ("attack")->load();
+    float decay = parameters.getRawParameterValue ("decay")->load();
+    float sustain = parameters.getRawParameterValue ("sustain")->load();
+    float release = parameters.getRawParameterValue ("release")->load();
     float volume = parameters.getRawParameterValue ("volume")->load();
     int waveformIndex = static_cast<int> (parameters.getRawParameterValue ("waveform")->load());
     currentWaveform = static_cast<Waveform> (juce::jlimit (0, 3, waveformIndex));
 
+    // Обновляем параметры ADSR для всех голосов
+    for (auto& voice : voices)
+    {
+        voice.adsrParams.attack = attack;
+        voice.adsrParams.decay = decay;
+        voice.adsrParams.sustain = sustain;
+        voice.adsrParams.release = release;
+        voice.adsr.setParameters (voice.adsrParams);
+    }
+
+    // 1. Обработка MIDI
     for (const auto metadata : midiMessages)
     {
         auto msg = metadata.getMessage();
-        if (msg.isNoteOn())
+        
+        if (msg.isNoteOn() && msg.getVelocity() > 0)
         {
-            currentNoteFreq = (float) juce::MidiMessage::getMidiNoteInHertz (msg.getNoteNumber());
-            phaseIncrement = currentNoteFreq / currentSampleRate;
-            currentPhase = 0.0; 
-            adsr.noteOn();
+            int note = msg.getNoteNumber();
+            float freq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
+            
+            // Поиск свободного голоса
+            int voiceIndex = -1;
+            for (int i = 0; i < MAX_VOICES; ++i)
+            {
+                if (!voices[i].active)
+                {
+                    voiceIndex = i;
+                    break;
+                }
+            }
+            
+            // Voice Stealing: если все заняты, берем первый (можно улучшить до oldest)
+            if (voiceIndex == -1)
+                voiceIndex = 0;
+                
+            voices[voiceIndex].noteOn (freq, currentSampleRate);
+            voices[voiceIndex].midiNote = note;
         }
-        else if (msg.isNoteOff())
+        else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
         {
-            adsr.noteOff();
+            int note = msg.getNoteNumber();
+            // Ищем голос с этой нотой и отправляем Note Off
+            for (int i = 0; i < MAX_VOICES; ++i)
+            {
+                if (voices[i].active && voices[i].midiNote == note)
+                {
+                    voices[i].noteOff();
+                }
+            }
         }
     }
     midiMessages.clear();
 
+    // 2. Генерация звука (полифоническое суммирование)
     for (int channel = 0; channel < totalNumOutputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer (channel);
 
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
-            float envelopeValue = adsr.getNextSample();
-            float oscillatorOutput = 0.0f;
+            float mix = 0.0f;
 
-            // DSP Генерация форм волны
-            switch (currentWaveform)
+            for (int v = 0; v < MAX_VOICES; ++v)
             {
-                case Waveform::Sine:
-                    oscillatorOutput = std::sin (2.0f * juce::MathConstants<float>::pi * (float)currentPhase);
-                    break;
-                case Waveform::Saw:
-                    oscillatorOutput = 2.0f * (float)currentPhase - 1.0f;
-                    break;
-                case Waveform::Square:
-                    oscillatorOutput = ((float)currentPhase < 0.5f) ? 1.0f : -1.0f;
-                    break;
-                case Waveform::Triangle:
-                    if (currentPhase < 0.25)      oscillatorOutput = 4.0f * (float)currentPhase;
-                    else if (currentPhase < 0.75)  oscillatorOutput = 2.0f - 4.0f * (float)currentPhase;
-                    else                           oscillatorOutput = 4.0f * (float)currentPhase - 4.0f;
-                    break;
-            }
-            
-            currentPhase += phaseIncrement;
-            if (currentPhase >= 1.0)
-                currentPhase -= 1.0;
+                if (!voices[v].active)
+                    continue;
 
-            channelData[sample] = oscillatorOutput * envelopeValue * volume;
+                float env = voices[v].adsr.getNextSample();
+                
+                // Если огибающая закончилась, деактивируем голос
+                if (env <= 0.0f && voices[v].adsr.getState() == juce::ADSR::State::idle)
+                {
+                    voices[v].active = false;
+                    continue;
+                }
+
+                float osc = 0.0f;
+                switch (currentWaveform)
+                {
+                    case Waveform::Sine:
+                        osc = std::sin (2.0f * juce::MathConstants<float>::pi * (float)voices[v].phase);
+                        break;
+                    case Waveform::Saw:
+                        osc = 2.0f * (float)voices[v].phase - 1.0f;
+                        break;
+                    case Waveform::Square:
+                        osc = ((float)voices[v].phase < 0.5f) ? 1.0f : -1.0f;
+                        break;
+                    case Waveform::Triangle:
+                        if (voices[v].phase < 0.25)      osc = 4.0f * (float)voices[v].phase;
+                        else if (voices[v].phase < 0.75) osc = 2.0f - 4.0f * (float)voices[v].phase;
+                        else                             osc = 4.0f * (float)voices[v].phase - 4.0f;
+                        break;
+                }
+                
+                mix += osc * env;
+                
+                voices[v].phase += voices[v].phaseIncrement;
+                if (voices[v].phase >= 1.0)
+                    voices[v].phase -= 1.0;
+            }
+
+            channelData[sample] = mix * volume;
         }
     }
 }
