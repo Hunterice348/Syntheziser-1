@@ -17,7 +17,7 @@ public:
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 2.0; } // Увеличено для корректного Release
+    double getTailLengthSeconds() const override { return 2.0; }
     
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -30,39 +30,64 @@ public:
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-
     juce::AudioProcessorValueTreeState parameters;
 
-    // --- POLYPHONIC VOICE ENGINE ---
     static constexpr int MAX_VOICES = 16;
     
     struct Voice
     {
         bool active = false;
         int midiNote = -1;
-        double phase = 0.0;
-        double phaseIncrement = 0.0;
+        
+        // Osc 1
+        double phase1 = 0.0;
+        double phaseInc1 = 0.0;
+        // Osc 2
+        double phase2 = 0.0;
+        double phaseInc2 = 0.0;
+        // Sub Osc
+        double phaseSub = 0.0;
+        double phaseIncSub = 0.0;
+        // Noise
+        float noiseState = 0.0f;
+
         juce::ADSR adsr;
         juce::ADSR::Parameters adsrParams;
 
-        void noteOn (float frequency, double sampleRate)
+        void noteOn (float frequency, double sampleRate, float detuneSemitones)
         {
             active = true;
-            phaseIncrement = frequency / sampleRate;
-            phase = 0.0;
+            float freq2 = frequency * std::pow(2.0f, detuneSemitones / 12.0f);
+            float freqSub = frequency * 0.5f; // Октава вниз
+
+            phaseInc1 = frequency / sampleRate;
+            phaseInc2 = freq2 / sampleRate;
+            phaseIncSub = freqSub / sampleRate;
+            
+            phase1 = 0.0;
+            phase2 = 0.0;
+            phaseSub = 0.0;
+            noiseState = 0.0f;
+            
             adsr.noteOn();
         }
 
-        void noteOff()
-        {
-            adsr.noteOff();
-        }
+        void noteOff() { adsr.noteOff(); }
     };
 
     std::array<Voice, MAX_VOICES> voices;
     enum class Waveform { Sine = 0, Saw, Square, Triangle };
-    Waveform currentWaveform = Waveform::Sine;
+    
+    Waveform currentWaveform1 = Waveform::Sine;
+    Waveform currentWaveform2 = Waveform::Saw;
     double currentSampleRate = 44100.0;
+
+    // Простой генератор белого шума (линейный конгруэнтный метод для детерминизма на голос)
+    inline float generateNoise(float& state) const
+    {
+        state = state * 1664525.0f + 1013904223.0f;
+        return (state * 1.0f / 4294967296.0f) * 2.0f - 1.0f;
+    }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HuntericeAbyssAudioProcessor)
 };
