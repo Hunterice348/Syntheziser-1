@@ -12,7 +12,7 @@ FetchContent_Declare(juce
 )
 FetchContent_MakeAvailable(juce)
 
-# Определение цели плагина с явным указанием исходных файлов
+# 1. Создание цели плагина (БЕЗ аргумента SOURCES внутри макроса)
 juce_add_plugin(HuntericeAbyss
     COMPANY_NAME "HUNTERICE"
     PLUGIN_NAME "ABYSS"
@@ -25,22 +25,24 @@ juce_add_plugin(HuntericeAbyss
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_NEEDS_KEYBOARD_FOCUS TRUE
-    SOURCES
-        Source/PluginProcessor.cpp
-        Source/PluginEditor.cpp
 )
 
-# Линковка необходимых модулей JUCE
+# 2. ПРАВИЛЬНОЕ добавление исходных файлов к цели
+target_sources(HuntericeAbyss PRIVATE
+    Source/PluginProcessor.cpp
+    Source/PluginEditor.cpp
+)
+
+# 3. Линковка необходимых модулей JUCE
 target_link_libraries(HuntericeAbyss PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_gui_extra
 )
 
-# Оптимизация: отключение ненужных функций для уменьшения размера и ускорения сборки
+# 4. Оптимизация: отключение ненужных функций
 target_compile_definitions(HuntericeAbyss PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0
 )
