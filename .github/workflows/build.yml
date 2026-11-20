@@ -23,35 +23,20 @@ jobs:
         submodules: recursive
         fetch-depth: 0
 
-    - name: Install Ninja
-      uses: seanmiddleditch/gha-setup-ninja@master
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
 
-    - name: Setup MSVC Developer Command Prompt
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x64
-
-    - name: Cache CMake dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          build/_deps
-          ~/.cache/CMake
-        key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-cmake-
-
-    - name: Configure CMake with Ninja
+    - name: Configure CMake
       run: |
-        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
+        cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
       shell: pwsh
 
-    - name: Build project
+    - name: Build Project
       run: |
         cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
       shell: pwsh
 
-    - name: Find and verify VST3 file
+    - name: Find and Verify VST3
       run: |
         Write-Host "Searching for VST3 file..."
         $vst3Path = Get-ChildItem -Path build -Recurse -Filter "*.vst3" | Select-Object -First 1
@@ -66,14 +51,14 @@ jobs:
         }
       shell: pwsh
 
-    - name: Prepare artifact
+    - name: Prepare Artifact Directory
       run: |
         New-Item -ItemType Directory -Force -Path "artifacts"
         Copy-Item -Path "$env:VST3_PATH" -Destination "artifacts" -Recurse
         Write-Host "✓ VST3 copied to artifacts directory"
       shell: pwsh
 
-    - name: Create ZIP archive
+    - name: Create ZIP Archive
       working-directory: artifacts
       run: |
         $zipName = "HUNTERICE-ABYSS-VST3-Windows-x64.zip"
@@ -82,7 +67,7 @@ jobs:
         Write-Host "✓ ZIP size: $((Get-Item $zipName).Length) bytes"
       shell: pwsh
 
-    - name: Upload build artifacts
+    - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: HUNTERICE-ABYSS-VST3-Windows-x64
@@ -90,7 +75,7 @@ jobs:
         retention-days: 30
         if-no-files-found: error
 
-    - name: Upload build logs on failure
+    - name: Upload Build Logs on Failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
@@ -101,7 +86,7 @@ jobs:
           build/**/*.log
         retention-days: 7
 
-    - name: Build summary
+    - name: Build Summary
       if: success()
       run: |
         Write-Host "=========================================="
