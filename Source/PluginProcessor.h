@@ -28,6 +28,9 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    // ПЕРЕМЕЩЕНО В PUBLIC, чтобы было доступно в .cpp файле
+    enum class Waveform { Sine = 0, Saw, Square, Triangle };
+
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState parameters;
@@ -39,16 +42,12 @@ private:
         bool active = false;
         int midiNote = -1;
         
-        // Osc 1
         double phase1 = 0.0;
         double phaseInc1 = 0.0;
-        // Osc 2
         double phase2 = 0.0;
         double phaseInc2 = 0.0;
-        // Sub Osc
         double phaseSub = 0.0;
         double phaseIncSub = 0.0;
-        // Noise
         float noiseState = 0.0f;
 
         juce::ADSR adsr;
@@ -58,7 +57,7 @@ private:
         {
             active = true;
             float freq2 = frequency * std::pow(2.0f, detuneSemitones / 12.0f);
-            float freqSub = frequency * 0.5f; // Октава вниз
+            float freqSub = frequency * 0.5f;
 
             phaseInc1 = frequency / sampleRate;
             phaseInc2 = freq2 / sampleRate;
@@ -76,13 +75,11 @@ private:
     };
 
     std::array<Voice, MAX_VOICES> voices;
-    enum class Waveform { Sine = 0, Saw, Square, Triangle };
     
     Waveform currentWaveform1 = Waveform::Sine;
     Waveform currentWaveform2 = Waveform::Saw;
     double currentSampleRate = 44100.0;
 
-    // Простой генератор белого шума (линейный конгруэнтный метод для детерминизма на голос)
     inline float generateNoise(float& state) const
     {
         state = state * 1664525.0f + 1013904223.0f;
