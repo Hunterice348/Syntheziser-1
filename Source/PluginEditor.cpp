@@ -60,7 +60,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced (20).removeFromTop (250);
     
-    // Oscillator Section
     auto oscArea = area.removeFromLeft (200);
     waveform1Box.setBounds (oscArea.removeFromTop (30).reduced (10));
     waveform2Box.setBounds (oscArea.removeFromTop (30).reduced (10));
@@ -69,13 +68,11 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     subLevelSlider.setBounds (oscArea.removeFromLeft (50));
     noiseLevelSlider.setBounds (oscArea.removeFromLeft (50));
     
-    // Envelope Section
     auto envArea = area.removeFromLeft (300);
     attackSlider.setBounds (envArea.removeFromLeft (70));
     decaySlider.setBounds (envArea.removeFromLeft (70));
     sustainSlider.setBounds (envArea.removeFromLeft (70));
     releaseSlider.setBounds (envArea.removeFromLeft (70));
     
-    // Master Section
     volumeSlider.setBounds (area.removeFromLeft (80));
 }
