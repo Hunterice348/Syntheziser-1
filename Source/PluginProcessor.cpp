@@ -14,7 +14,7 @@ HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
 #endif
     apvts(*this, nullptr, "Parameters", createParameterLayout())
 {
-    // Инициализация осциллятора пилообразной волной (упрощенная для минимальной версии)
+    // ИСПРАВЛЕНО: добавлено [](float x) для корректной лямбда-функции
     oscillator.initialise([](float x) { return x < 0.5f ? 2.0f * x - 1.0f : 2.0f * (1.0f - x); }, 128);
 }
 
@@ -56,21 +56,18 @@ void HuntericeAbyssAudioProcessor::releaseResources()
 
 void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
-    juce::ScopedNoDenormals noDenormals; // Защита от денормализованных чисел
+    juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // Очистка дополнительных каналов
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // Плавное обновление параметров
     auto* oscLevelParam = apvts.getRawParameterValue("oscLevel");
     auto* masterVolParam = apvts.getRawParameterValue("masterVol");
     
     masterGain.setGainLinear(*masterVolParam);
 
-    // Обработка MIDI
     for (const auto metadata : midiMessages)
     {
         auto msg = metadata.getMessage();
@@ -78,7 +75,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         {
             adsr.noteOn();
             oscillator.setFrequency(msg.getFrequencyInHertz());
-            currentPhase = 0.0f; // Сброс фазы для четкого начала ноты
+            currentPhase = 0.0f;
             isVoiceActive = true;
         }
         else if (msg.isNoteOff())
@@ -87,7 +84,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         }
     }
 
-    // Обновление параметров ADSR
     juce::dsp::ADSR::Parameters adsrParams;
     adsrParams.attack = *apvts.getRawParameterValue("attack");
     adsrParams.decay = *apvts.getRawParameterValue("decay");
@@ -95,12 +91,10 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     adsrParams.release = *apvts.getRawParameterValue("release");
     adsr.setParameters(adsrParams);
 
-    // Генерация аудио
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         float envelopeValue = adsr.getNextSample();
         
-        // Обновление фазы для базовой генерации волны (на Этапе 3 будет заменено на полноценный band-limited движок)
         currentPhase += 440.0f / (float) getSampleRate(); 
         if (currentPhase >= 1.0f) currentPhase -= 1.0f;
         float rawSaw = 2.0f * currentPhase - 1.0f;
@@ -112,7 +106,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         }
     }
 
-    // Применение мастер-громкости
     juce::dsp::AudioBlock<float> block(buffer);
     juce::dsp::ProcessContextReplacing<float> context(block);
     masterGain.process(context);
@@ -140,7 +133,7 @@ void HuntericeAbyssAudioProcessor::setStateInformation (const void* data, int si
             apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
 }
 
-// Создание новых экземпляров плагина
+// ОБЯЗАТЕЛЬНАЯ функция для создания экземпляра плагина (VST3 требует её наличия)
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new HuntericeAbyssAudioProcessor();
