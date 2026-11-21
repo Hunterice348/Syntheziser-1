@@ -79,7 +79,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbMix", "Reverb Mix", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterBool> ("fxBypass", "FX Bypass", false));
 
-    // --- STAGE 12: UNISON & MACRO ---
+    // STAGE 12: Unison & Macro
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("unisonSpread", "Unison Spread", 0.0f, 0.05f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("macroMorph", "Macro: Clean <-> Dirty", 0.0f, 1.0f, 0.0f));
     
@@ -179,7 +179,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     float reverbMix = parameters.getRawParameterValue ("reverbMix")->load();
     bool fxBypass = parameters.getRawParameterValue ("fxBypass")->load();
 
-    // STAGE 12 PARAMETERS
     float unisonSpread = parameters.getRawParameterValue ("unisonSpread")->load();
     float macroMorph = parameters.getRawParameterValue ("macroMorph")->load();
     
@@ -253,7 +252,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             float mix = 0.0f;
             float currentDrive = smoothedDrive.getNextValue();
             
-            // MACRO MORPH: чем выше macroMorph, тем выше cutoff, distortion и noise
             float morphedCutoff = juce::jlimit (0.0f, 1.0f, smoothedCutoff.getNextValue() + keyTrackOffset + (macroMorph * 0.6f));
             float morphedDistDrive = distDrive + (macroMorph * 0.8f);
             float morphedNoise = noiseLevel + (macroMorph * 0.5f);
