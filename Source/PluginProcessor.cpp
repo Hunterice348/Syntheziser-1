@@ -60,11 +60,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoRate", "LFO Rate", 0.1f, 20.0f, 2.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoDepth", "LFO Depth", 0.0f, 1.0f, 0.0f));
     
-    // MODULATION MATRIX (Stage 9)
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToPitch", "LFO -> Pitch", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToCutoff", "LFO -> Cutoff", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("modEnvToPitch", "Env -> Pitch", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("modVelToCutoff", "Vel -> Cutoff", 0.0f, 1.0f, 0.0f));
+    
+    // SEMI-MODULAR PATCH BAY (Stage 10)
+    juce::StringArray sources = { "None", "LFO", "Filter Env", "Velocity", "Mod Wheel", "Osc 1 (Audio)", "Noise (Audio)" };
+    juce::StringArray dests = { "None", "Filter Cutoff", "Osc 1 Pitch", "Osc 2 Pitch", "Master Vol", "Filter Res" };
+    
+    for (int i = 0; i < NUM_PATCH_CABLES; ++i)
+    {
+        params.push_back (std::make_unique<juce::AudioParameterChoice> ("patch" + juce::String(i) + "Src", "Patch " + juce::String(i+1) + " Source", sources, 0));
+        params.push_back (std::make_unique<juce::AudioParameterChoice> ("patch" + juce::String(i) + "Dst", "Patch " + juce::String(i+1) + " Dest", dests, 0));
+        params.push_back (std::make_unique<juce::AudioParameterFloat> ("patch" + juce::String(i) + "Amt", "Patch " + juce::String(i+1) + " Amount", 0.0f, 1.0f, 0.5f));
+    }
     
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1", "Osc 1 Waveform", waveforms, 0));
@@ -159,11 +169,19 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     Waveform currentLfoWaveform = static_cast<Waveform> (juce::jlimit (0, 3, lfoWfIdx));
     bool lfoIsSH = (lfoWfIdx == 4);
     
-    // Modulation Matrix Params
     float modLfoToPitch = parameters.getRawParameterValue ("modLfoToPitch")->load();
     float modLfoToCutoff = parameters.getRawParameterValue ("modLfoToCutoff")->load();
     float modEnvToPitch = parameters.getRawParameterValue ("modEnvToPitch")->load();
     float modVelToCutoff = parameters.getRawParameterValue ("modVelToCutoff")->load();
+    
+    // Read Patch Bay Parameters
+    for (int i = 0; i < NUM_PATCH_CABLES; ++i)
+    {
+        patchCables[i].source = static_cast<ModSource> (static_cast<int> (parameters.getRawParameterValue ("patch" + juce::String(i) + "Src")->load()));
+        patchCables[i].destination = static_cast<ModDest> (static_cast<int> (parameters.getRawParameterValue ("patch" + juce::String(i) + "Dst")->load()));
+        patchCables[i].amount = parameters.getRawParameterValue ("patch" + juce::String(i) + "Amt")->load();
+        patchCables[i].active = (patchCables[i].source != ModSource::None && patchCables[i].destination != ModDest::None);
+    }
     
     smoothedDrive.setTargetValue (masterDrive);
     smoothedCutoff.setTargetValue (filterCutoff);
@@ -194,8 +212,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     for (const auto metadata : midiMessages)
     {
         auto msg = metadata.getMessage();
-        
-        // Обработка Mod Wheel (MIDI CC 1)
         if (msg.isController() && msg.getControllerNumber() == 1)
         {
             currentModWheel = msg.getControllerValue() / 127.0f;
@@ -204,7 +220,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         {
             int note = msg.getNoteNumber();
             float freq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
-            float vel = msg.getVelocity() / 127.0f; // ⚠️ ИЗВЛЕКАЕМ VELOCITY
+            float vel = msg.getVelocity() / 127.0f;
             
             int voiceIndex = -1;
             for (int i = 0; i < MAX_VOICES; ++i)
@@ -212,7 +228,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             
             if (voiceIndex == -1) voiceIndex = 0;
                 
-            // ⚠️ ЗДЕСЬ ДОЛЖНО БЫТЬ 6 АРГУМЕНТОВ:
             voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate, vel);
             voices[voiceIndex].midiNote = note;
             lastNotePlayed = note;
@@ -241,6 +256,10 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             float currentDrive = smoothedDrive.getNextValue();
             float baseCutoff = juce::jlimit (0.0f, 1.0f, smoothedCutoff.getNextValue() + keyTrackOffset);
             float currentResonance = smoothedResonance.getNextValue();
+            float masterVolMod = 0.0f;
+            float pitchModGlobal = 0.0f;
+            float cutoffModGlobal = 0.0f;
+            float resModGlobal = 0.0f;
 
             for (int v = 0; v < MAX_VOICES; ++v)
             {
@@ -255,7 +274,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     continue;
                 }
 
-                // LFO calculation
                 float lfoValue = 0.0f;
                 if (lfoIsSH)
                 {
@@ -274,23 +292,41 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     if (voices[v].lfoPhase >= 1.0f) voices[v].lfoPhase -= 1.0f;
                 }
 
-                // --- MODULATION MATRIX APPLICATION ---
-                // 1. LFO -> Pitch
-                float pitchMod = lfoValue * modLfoToPitch * 0.05f;
-                
-                // 2. Envelope -> Pitch
-                pitchMod += (fEnv - 0.5f) * modEnvToPitch * 0.05f;
+                // --- SEMI-MODULAR PATCH BAY PROCESSING ---
+                float voicePitchMod = (fEnv - 0.5f) * modEnvToPitch * 0.05f + lfoValue * modLfoToPitch * 0.05f;
+                float voiceCutoffMod = (fEnv * fEnvAmount) + (lfoValue * lfoDepth) + (lfoValue * modLfoToCutoff) + ((voices[v].velocity - 0.5f) * modVelToCutoff * 0.5f) + ((currentModWheel - 0.5f) * 0.5f);
 
-                // 3. Velocity -> Cutoff
-                float velMod = (voices[v].velocity - 0.5f) * modVelToCutoff * 0.5f;
+                for (int c = 0; c < NUM_PATCH_CABLES; ++c)
+                {
+                    if (!patchCables[c].active) continue;
+                    
+                    float srcVal = 0.0f;
+                    switch (patchCables[c].source)
+                    {
+                        case ModSource::LFO: srcVal = lfoValue; break;
+                        case ModSource::FilterEnv: srcVal = fEnv; break;
+                        case ModSource::Velocity: srcVal = voices[v].velocity; break;
+                        case ModSource::ModWheel: srcVal = currentModWheel; break;
+                        // Для audio-rate источников мы возьмём их значение ниже, после генерации осцилляторов
+                        default: break;
+                    }
 
-                // 4. Mod Wheel -> Cutoff
-                float wheelMod = (currentModWheel - 0.5f) * 0.5f;
+                    float modAmount = srcVal * patchCables[c].amount;
 
-                // Apply pitch modulation to phase increment
-                float modulatedPhaseInc1 = voices[v].phaseInc1 * (1.0f + pitchMod);
-                float modulatedPhaseInc2 = voices[v].phaseInc2 * (1.0f + pitchMod);
-                float modulatedPhaseIncSub = voices[v].phaseIncSub * (1.0f + pitchMod);
+                    switch (patchCables[c].destination)
+                    {
+                        case ModDest::FilterCutoff: voiceCutoffMod += modAmount; break;
+                        case ModDest::Osc1Pitch: voicePitchMod += modAmount * 0.05f; break;
+                        case ModDest::Osc2Pitch: voicePitchMod += modAmount * 0.05f; break;
+                        case ModDest::MasterVol: masterVolMod += modAmount; break;
+                        case ModDest::FilterRes: resModGlobal += modAmount; break;
+                        default: break;
+                    }
+                }
+
+                float modulatedPhaseInc1 = voices[v].phaseInc1 * (1.0f + voicePitchMod);
+                float modulatedPhaseInc2 = voices[v].phaseInc2 * (1.0f + voicePitchMod);
+                float modulatedPhaseIncSub = voices[v].phaseIncSub * (1.0f + voicePitchMod);
 
                 float osc1 = generateWaveform ((float)voices[v].phase1, currentWaveform1);
                 voices[v].phase1 += modulatedPhaseInc1;
@@ -318,27 +354,36 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     noise = generateNoise (voices[v].noiseState);
                 }
 
-                // Modulate cutoff with LFO, Velocity, and Mod Wheel
-                float modAmount = (fEnv * fEnvAmount) + (lfoValue * lfoDepth) + (lfoValue * modLfoToCutoff) + velMod + wheelMod;
-                float modulatedCutoff = juce::jlimit (0.0f, 1.0f, baseCutoff + modAmount);
+                // Audio-rate patch bay (Osc1/Noise -> Destinations)
+                for (int c = 0; c < NUM_PATCH_CABLES; ++c)
+                {
+                    if (!patchCables[c].active) continue;
+                    float srcVal = 0.0f;
+                    if (patchCables[c].source == ModSource::Osc1Audio) srcVal = osc1;
+                    else if (patchCables[c].source == ModSource::NoiseAudio) srcVal = noise;
+                    else continue;
 
+                    float modAmount = srcVal * patchCables[c].amount;
+                    if (patchCables[c].destination == ModDest::FilterCutoff) voiceCutoffMod += modAmount * 0.5f;
+                    else if (patchCables[c].destination == ModDest::Osc1Pitch) modulatedPhaseInc1 *= (1.0f + modAmount * 0.1f);
+                }
+
+                float modulatedCutoff = juce::jlimit (0.0f, 1.0f, baseCutoff + voiceCutoffMod);
                 float oscMix = (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * noiseLevel)) * env;
                 
-                float filtered = filter.process (oscMix, modulatedCutoff, currentResonance, filterDrive, currentFilterType);
+                float filtered = filter.process (oscMix, modulatedCutoff, currentResonance + resModGlobal, filterDrive, currentFilterType);
 
                 float driveMultiplier = 1.0f + (currentDrive * 4.0f);
                 float saturatedMix = std::tanh (filtered * driveMultiplier);
 
                 float compensation = 1.0f / std::tanh (driveMultiplier);
-                if (driveMultiplier > 1.0f)
-                {
-                    saturatedMix *= compensation;
-                }
+                if (driveMultiplier > 1.0f) saturatedMix *= compensation;
 
                 mix += saturatedMix;
             }
 
-            channelData[sample] = mix * volume;
+            float finalVol = volume * (1.0f + masterVolMod);
+            channelData[sample] = mix * finalVol;
         }
     }
 }
