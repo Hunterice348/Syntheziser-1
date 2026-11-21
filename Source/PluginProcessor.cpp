@@ -1,10 +1,18 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+const int HuntericeAbyssAudioProcessor::drumMidiNotes[NUM_DRUMS];
+
 HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       parameters (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    drums[0].type = DrumVoice::Kick;
+    drums[1].type = DrumVoice::Snare;
+    drums[2].type = DrumVoice::Hat;
+    drums[3].type = DrumVoice::Clap;
+    drums[4].type = DrumVoice::Tom;
+    drums[5].type = DrumVoice::Perc;
 }
 
 bool HuntericeAbyssAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -26,7 +34,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("decay",   "Decay",   0.001f, 2.0f, 0.10f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("sustain", "Sustain", 0.0f,   1.0f, 0.50f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("release", "Release", 0.001f, 3.0f, 0.10f));
-
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("volume",      "Volume",       0.0f, 1.0f, 0.8f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Level",   "Osc 2 Level",  0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Detune",  "Osc 2 Detune", -12.0f, 12.0f, 0.0f));
@@ -34,7 +41,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("noiseLevel",  "Noise Level",  0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("analogDrift", "Analog Drift", 0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("masterDrive", "Master Drive", 0.0f, 1.0f, 0.0f));
-
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterCutoff",    "Filter Cutoff", 0.0f, 1.0f, 0.8f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterResonance", "Resonance",     0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDrive",     "Filter Drive",  0.0f, 1.0f, 0.0f));
@@ -44,10 +50,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterSustain",   "Filter Sustain",0.0f, 1.0f, 0.50f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterRelease",   "Filter Release",0.001f, 3.0f, 0.10f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterEnvAmount", "Filter Env Amt",-1.0f, 1.0f, 0.5f));
-
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoRate",  "LFO Rate",  0.1f, 20.0f, 2.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoDepth", "LFO Depth", 0.0f, 1.0f,  0.0f));
-
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToPitch",  "LFO -> Pitch",  0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToCutoff", "LFO -> Cutoff", 0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("modEnvToPitch",  "Env -> Pitch",  0.0f, 1.0f, 0.0f));
@@ -71,14 +75,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbDecay",   "Reverb Decay",   0.0f, 0.95f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbMix",     "Reverb Mix",     0.0f, 1.0f,  0.0f));
     p.push_back (std::make_unique<juce::AudioParameterBool>  ("fxBypass",      "FX Bypass",      false));
-
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("unisonSpread", "Unison Spread", 0.0f, 0.05f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("macroMorph",   "Clean <-> Dirty", 0.0f, 1.0f, 0.0f));
-
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1",   "Osc 1 Waveform", waves,  0));
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform2",   "Osc 2 Waveform", waves,  1));
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("filterType",  "Filter Type",    ftypes, 0));
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("lfoWaveform", "LFO Waveform",   lwaves, 0));
+
+    // DRUM MACHINE (Stage 14)
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumVol",   "DRUM VOL", 0.0f, 1.0f, 0.8f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumDrive", "DRUM DRV", 0.0f, 1.0f, 0.0f));
+
+    const juce::StringArray drumNames { "KICK", "SNARE", "HI-HAT", "CLAP", "TOM", "PERC" };
+    for (int i = 0; i < NUM_DRUMS; ++i)
+    {
+        const juce::String prefix = drumNames[i].toLowerCase().replaceCharacter ('-', '_');
+        p.push_back (std::make_unique<juce::AudioParameterFloat> (prefix + "Lvl",   drumNames[i] + " LVL",   0.0f, 1.0f, 0.8f));
+        p.push_back (std::make_unique<juce::AudioParameterFloat> (prefix + "Tune",  drumNames[i] + " TUNE", -12.0f, 12.0f, 0.0f));
+        p.push_back (std::make_unique<juce::AudioParameterFloat> (prefix + "Decay", drumNames[i] + " DECAY", 0.05f, 2.0f, 0.3f));
+        p.push_back (std::make_unique<juce::AudioParameterFloat> (prefix + "Tone",  drumNames[i] + " TONE",  0.0f, 1.0f, 0.5f));
+    }
 
     return { p.begin(), p.end() };
 }
@@ -86,6 +102,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
 void HuntericeAbyssAudioProcessor::resetDsp()
 {
     for (auto& v : voices) { v.active = false; v.releasing = false; v.ampEnv.reset(); v.filterEnv.reset(); v.filter.reset(); }
+    for (auto& d : drums) d.active = false;
     delayL.reset(); delayR.reset();
     chorusL.reset(); chorusR.reset();
     reverbL.reset(); reverbR.reset();
@@ -100,6 +117,7 @@ void HuntericeAbyssAudioProcessor::allNotesOff (bool force)
         if (force) { v.active = false; v.ampEnv.reset(); v.filterEnv.reset(); }
         else       { v.releasing = true; v.sustained = false; v.ampEnv.noteOff(); v.filterEnv.noteOff(); }
     }
+    for (auto& d : drums) d.active = false;
 }
 
 void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int)
@@ -112,7 +130,14 @@ void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int)
         "lfoRate", "lfoDepth", "modLfoToPitch", "modLfoToCutoff", "modEnvToPitch", "modVelToCutoff",
         "distDrive", "distMix", "chorusRate", "chorusDepth", "chorusMix",
         "delayTime", "delayFeedback", "delayMix", "reverbDecay", "reverbMix",
-        "unisonSpread", "macroMorph", "patch0Amt", "patch1Amt", "patch2Amt", "patch3Amt"
+        "unisonSpread", "macroMorph", "patch0Amt", "patch1Amt", "patch2Amt", "patch3Amt",
+        "drumVol", "drumDrive",
+        "kickLvl", "kickTune", "kickDecay", "kickTone",
+        "snareLvl", "snareTune", "snareDecay", "snareTone",
+        "hi_hatLvl", "hi_hatTune", "hi_hatDecay", "hi_hatTone",
+        "clapLvl", "clapTune", "clapDecay", "clapTone",
+        "tomLvl", "tomTune", "tomDecay", "tomTone",
+        "percLvl", "percTune", "percDecay", "percTone"
     };
 
     for (int i = 0; i < NumSmooth; ++i)
@@ -123,11 +148,9 @@ void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int)
 
     bend.reset (sr, 0.01);
     bend.setCurrentAndTargetValue (0.0f);
-
     reverbL.prepare (sr);
     reverbR.prepare (sr);
     resetDsp();
-
     for (auto& v : voices) { v.ampEnv.setSampleRate (sr); v.filterEnv.setSampleRate (sr); }
     modWheel = 0.0f;
     sustainPedal = false;
@@ -178,16 +201,11 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     for (auto& s : sm) s.update();
 
-    NoteParams np;
-    np.sampleRate  = sr;
-    np.analogDrift = parameters.getRawParameterValue ("analogDrift")->load();
-
     juce::MidiBuffer::Iterator it (midi);
     juce::MidiMessage msg;
     int msgPos = 0;
     bool hasNext = it.getNextEvent (msg, msgPos);
     bool dspFault = false;
-
     const float nyq = (float) sr * 0.45f;
 
     for (int i = 0; i < numSamples; ++i)
@@ -214,32 +232,54 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             else if (msg.isNoteOn() && msg.getVelocity() > 0)
             {
                 const int note = msg.getNoteNumber();
-                np.osc2Detune = sm[Osc2Detune].v.getCurrentValue();
-                np.lfoRate    = sm[LfoRate].v.getCurrentValue();
-                np.velocity   = msg.getVelocity() / 127.0f;
-                np.unison     = sm[Unison].v.getCurrentValue();
+                const float vel = msg.getVelocity() / 127.0f;
 
-                int idx = -1;
-                for (int k = 0; k < MAX_VOICES; ++k)
-                    if (voices[(size_t) k].active && voices[(size_t) k].midiNote == note && ! voices[(size_t) k].releasing) { idx = k; break; }
-                if (idx < 0)
-                    for (int k = 0; k < MAX_VOICES; ++k)
-                        if (! voices[(size_t) k].active) { idx = k; break; }
-                if (idx < 0)
+                // === DRUM MACHINE TRIGGER ===
+                bool isDrum = false;
+                for (int d = 0; d < NUM_DRUMS; ++d)
                 {
-                    juce::uint32 best = 0xffffffffu;
-                    for (int k = 0; k < MAX_VOICES; ++k)
-                        if (voices[(size_t) k].releasing && voices[(size_t) k].serial < best) { best = voices[(size_t) k].serial; idx = k; }
-                    if (idx < 0)
+                    if (note == drumMidiNotes[d])
                     {
-                        best = 0xffffffffu;
-                        for (int k = 0; k < MAX_VOICES; ++k)
-                            if (voices[(size_t) k].serial < best) { best = voices[(size_t) k].serial; idx = k; }
+                        const juce::String prefix = juce::StringArray { "kick", "snare", "hi_hat", "clap", "tom", "perc" }[d];
+                        const float lvl   = sm[DrumVol + 2 + d * 4].next();
+                        const float tune  = sm[DrumVol + 3 + d * 4].next();
+                        const float decay = sm[DrumVol + 4 + d * 4].next();
+                        const float tone  = sm[DrumVol + 5 + d * 4].next();
+                        drums[(size_t) d].trigger (vel, lvl, tune, decay, tone);
+                        isDrum = true;
+                        break;
                     }
                 }
-                if (idx < 0) idx = 0;
-                voices[(size_t) idx].start (note, (float) juce::MidiMessage::getMidiNoteInHertz (note), np, rng, ++noteSerial);
-                voices[(size_t) idx].keyTrackMul = std::pow (2.0f, (float) (note - 60) * 0.0833333f * kt);
+
+                if (! isDrum)
+                {
+                    const float osc2Detune = sm[Osc2Detune].v.getCurrentValue();
+                    const float lfoRate    = sm[LfoRate].v.getCurrentValue();
+                    const float analogDrift = parameters.getRawParameterValue ("analogDrift")->load();
+                    const float unison     = sm[Unison].v.getCurrentValue();
+
+                    int idx = -1;
+                    for (int k = 0; k < MAX_VOICES; ++k)
+                        if (voices[(size_t) k].active && voices[(size_t) k].midiNote == note && ! voices[(size_t) k].releasing) { idx = k; break; }
+                    if (idx < 0)
+                        for (int k = 0; k < MAX_VOICES; ++k)
+                            if (! voices[(size_t) k].active) { idx = k; break; }
+                    if (idx < 0)
+                    {
+                        juce::uint32 best = 0xffffffffu;
+                        for (int k = 0; k < MAX_VOICES; ++k)
+                            if (voices[(size_t) k].releasing && voices[(size_t) k].serial < best) { best = voices[(size_t) k].serial; idx = k; }
+                        if (idx < 0)
+                        {
+                            best = 0xffffffffu;
+                            for (int k = 0; k < MAX_VOICES; ++k)
+                                if (voices[(size_t) k].serial < best) { best = voices[(size_t) k].serial; idx = k; }
+                        }
+                    }
+                    if (idx < 0) idx = 0;
+                    voices[(size_t) idx].start (note, (float) juce::MidiMessage::getMidiNoteInHertz (note), sr, osc2Detune, analogDrift, lfoRate, vel, unison, rng, ++noteSerial);
+                    voices[(size_t) idx].keyTrackMul = std::pow (2.0f, (float) (note - 60) * 0.0833333f * kt);
+                }
             }
             else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
             {
@@ -270,7 +310,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         for (auto& v : voices)
         {
             if (! v.active) continue;
-
             const float env = v.ampEnv.getNextSample();
             const float fe  = v.filterEnv.getNextSample();
             if (! v.ampEnv.isActive()) { v.active = false; continue; }
@@ -361,6 +400,25 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             mixL += s * v.panL;
             mixR += s * v.panR;
         }
+
+        // === DRUM MACHINE RENDER ===
+        float drumL = 0.0f, drumR = 0.0f;
+        for (int d = 0; d < NUM_DRUMS; ++d)
+        {
+            const float s = drums[(size_t) d].process (sr);
+            drumL += s * 0.7071f;
+            drumR += s * 0.7071f;
+        }
+        const float drumDriveVal = pv[DrumDrive];
+        if (drumDriveVal > 0.0001f)
+        {
+            const float d = 1.0f + drumDriveVal * 3.0f;
+            const float comp = 1.0f / std::tanh (d);
+            drumL = std::tanh (drumL * d) * comp;
+            drumR = std::tanh (drumR * d) * comp;
+        }
+        mixL += drumL;
+        mixR += drumR;
 
         const float target = 1.0f / std::sqrt ((float) juce::jmax (1, activeCount));
         normGain += 0.0015f * (target - normGain);
