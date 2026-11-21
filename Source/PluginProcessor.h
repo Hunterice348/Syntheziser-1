@@ -50,8 +50,15 @@ private:
 
         juce::ADSR adsr;
         juce::ADSR::Parameters adsrParams;
+        
+        juce::ADSR filterAdsr;
+        juce::ADSR::Parameters filterAdsrParams;
+        
+        double lfoPhase = 0.0;
+        double lfoPhaseInc = 0.0;
+        float lfoSHValue = 0.0f;
 
-        void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount)
+        void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount, float lfoRateHz)
         {
             active = true;
             driftOffset = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * 2.0f * analogDriftAmount * 0.015f;
@@ -67,10 +74,18 @@ private:
             phase1 = 0.0; phase2 = 0.0; phaseSub = 0.0;
             noiseState = static_cast<float>(juce::Random::getSystemRandom().nextInt());
             
+            lfoPhaseInc = lfoRateHz / sampleRate;
+            lfoPhase = 0.0;
+            lfoSHValue = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f;
+            
             adsr.noteOn();
+            filterAdsr.noteOn();
         }
 
-        void noteOff() { adsr.noteOff(); }
+        void noteOff() { 
+            adsr.noteOff(); 
+            filterAdsr.noteOff(); 
+        }
     };
 
     std::array<Voice, MAX_VOICES> voices;
@@ -79,56 +94,35 @@ private:
     Waveform currentWaveform2 = Waveform::Saw;
     FilterType currentFilterType = FilterType::LP12;
     double currentSampleRate = 44100.0;
-    int lastNotePlayed = 60; // Для key tracking
+    int lastNotePlayed = 60;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDrive;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedCutoff;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedResonance;
 
-    // --- STATE VARIABLE FILTER (SVF) ---
-    // Стерео фильтр (по одному на канал)
     struct SVFilter
     {
         float low = 0.0f, band = 0.0f, high = 0.0f;
-        
         void reset() { low = band = high = 0.0f; }
         
-        // Обработка одного сэмпла, возвращает выбранный тип выхода
         float process (float input, float cutoffNorm, float resonance, float drive, FilterType type)
         {
-            // cutoffNorm: 0..1 -> преобразуем в частоту в радианах
-            // Используем sin для стабильности при высоких частотах
             float freq = 2.0f * std::sin (juce::MathConstants<float>::pi * cutoffNorm * 0.499f);
-            
-            // Ограничение resonance для предотвращения нестабильности
-            // 1.0 = нет резонанса, 0.01 = почти self-oscillation
             float q = 1.0f - juce::jlimit (0.01f, 0.99f, resonance);
-            
-            // Применение drive (мягкое насыщение внутри фильтра для analog feel)
             float inputWithDrive = std::tanh (input * (1.0f + drive * 3.0f));
             
-            // Chamberlin SVF core
             low  += freq * band;
             high  = inputWithDrive - low - q * band;
             band += freq * high;
-            
-            // Нелинейное насыщение band-прохода для warmth
             band = std::tanh (band * (1.0f + drive * 0.5f));
             
             switch (type)
             {
-                case FilterType::LP12:
-                    return low;
-                case FilterType::LP24:
-                    // Каскадирование двух SVF для 24dB/oct
-                    // Используем простой подход: применяем SVF дважды
-                    return low * low * 4.0f; // Упрощённая эмуляция 24dB
-                case FilterType::HP:
-                    return high;
-                case FilterType::BP:
-                    return band;
-                default:
-                    return low;
+                case FilterType::LP12: return low;
+                case FilterType::LP24: return low * low * 4.0f;
+                case FilterType::HP:   return high;
+                case FilterType::BP:   return band;
+                default:               return low;
             }
         }
     };
