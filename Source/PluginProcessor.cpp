@@ -37,7 +37,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("subLevel", "Sub Level", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("noiseLevel", "Noise Level", 0.0f, 1.0f, 0.0f));
     
-    // Analog Modeling Parameters
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("analogDrift", "Analog Drift", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("masterDrive", "Master Drive", 0.0f, 1.0f, 0.0f));
     
@@ -51,7 +50,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
 void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
-    smoothedDrive.reset (sampleRate, 0.05); // 50ms сглаживание для Drive
+    smoothedDrive.reset (sampleRate, 0.05);
     
     for (auto& voice : voices)
     {
@@ -133,7 +132,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             
             if (voiceIndex == -1) voiceIndex = 0;
                 
-            // ИСПРАВЛЕНИЕ: добавлен 4-й параметр analogDrift
+            // ⚠️ ИСПРАВЛЕНИЕ: передаём 4 параметра, включая analogDrift
             voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift);
             voices[voiceIndex].midiNote = note;
         }
@@ -145,3 +144,92 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     voices[i].noteOff();
         }
     }
+    midiMessages.clear();
+
+    for (int channel = 0; channel < totalNumOutputChannels; ++channel)
+    {
+        auto* channelData = buffer.getWritePointer (channel);
+
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            float mix = 0.0f;
+            float currentDrive = smoothedDrive.getNextValue();
+
+            for (int v = 0; v < MAX_VOICES; ++v)
+            {
+                if (!voices[v].active) continue;
+
+                float env = voices[v].adsr.getNextSample();
+                if (env <= 0.0f && !voices[v].adsr.isActive())
+                {
+                    voices[v].active = false;
+                    continue;
+                }
+
+                float osc1 = generateWaveform ((float)voices[v].phase1, currentWaveform1);
+                voices[v].phase1 += voices[v].phaseInc1;
+                if (voices[v].phase1 >= 1.0) voices[v].phase1 -= 1.0;
+
+                float osc2 = 0.0f;
+                if (osc2Level > 0.0f)
+                {
+                    osc2 = generateWaveform ((float)voices[v].phase2, currentWaveform2);
+                    voices[v].phase2 += voices[v].phaseInc2;
+                    if (voices[v].phase2 >= 1.0) voices[v].phase2 -= 1.0;
+                }
+
+                float sub = 0.0f;
+                if (subLevel > 0.0f)
+                {
+                    sub = (voices[v].phaseSub < 0.5f) ? 1.0f : -1.0f;
+                    voices[v].phaseSub += voices[v].phaseIncSub;
+                    if (voices[v].phaseSub >= 1.0) voices[v].phaseSub -= 1.0;
+                }
+
+                float noise = 0.0f;
+                if (noiseLevel > 0.0f)
+                {
+                    noise = generateNoise (voices[v].noiseState);
+                }
+
+                mix += (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * noiseLevel)) * env;
+            }
+
+            // Analog Saturation (Soft Clipping via tanh)
+            float driveMultiplier = 1.0f + (currentDrive * 4.0f);
+            float saturatedMix = std::tanh (mix * driveMultiplier);
+            
+            float compensation = 1.0f / std::tanh (driveMultiplier);
+            if (driveMultiplier > 1.0f) {
+                saturatedMix *= compensation;
+            }
+
+            channelData[sample] = saturatedMix * volume;
+        }
+    }
+}
+
+juce::AudioProcessorEditor* HuntericeAbyssAudioProcessor::createEditor()
+{
+    return new HuntericeAbyssAudioProcessorEditor (*this, parameters);
+}
+
+void HuntericeAbyssAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = parameters.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    copyXmlToBinary (*xml, destData);
+}
+
+void HuntericeAbyssAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+    if (xmlState.get() != nullptr)
+        if (xmlState->hasTagName (parameters.state.getType()))
+            parameters.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new HuntericeAbyssAudioProcessor();
+}
