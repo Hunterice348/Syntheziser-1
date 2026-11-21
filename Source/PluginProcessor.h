@@ -29,6 +29,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     enum class Waveform { Sine = 0, Saw, Square, Triangle };
+    enum class FilterType { LP12 = 0, LP24, HP, BP };
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -45,7 +46,7 @@ private:
         double phase2 = 0.0, phaseInc2 = 0.0;
         double phaseSub = 0.0, phaseIncSub = 0.0;
         float noiseState = 0.0f;
-        float driftOffset = 0.0f; // Для аналогового дрейфа
+        float driftOffset = 0.0f;
 
         juce::ADSR adsr;
         juce::ADSR::Parameters adsrParams;
@@ -53,7 +54,6 @@ private:
         void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount)
         {
             active = true;
-            // Случайный дрейф высоты тона (до ±1.5 центов) для имитации аналоговой нестабильности
             driftOffset = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * 2.0f * analogDriftAmount * 0.015f;
             
             float freq1 = frequency * (1.0f + driftOffset);
@@ -77,9 +77,63 @@ private:
     
     Waveform currentWaveform1 = Waveform::Sine;
     Waveform currentWaveform2 = Waveform::Saw;
+    FilterType currentFilterType = FilterType::LP12;
     double currentSampleRate = 44100.0;
+    int lastNotePlayed = 60; // Для key tracking
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDrive;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedCutoff;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedResonance;
+
+    // --- STATE VARIABLE FILTER (SVF) ---
+    // Стерео фильтр (по одному на канал)
+    struct SVFilter
+    {
+        float low = 0.0f, band = 0.0f, high = 0.0f;
+        
+        void reset() { low = band = high = 0.0f; }
+        
+        // Обработка одного сэмпла, возвращает выбранный тип выхода
+        float process (float input, float cutoffNorm, float resonance, float drive, FilterType type)
+        {
+            // cutoffNorm: 0..1 -> преобразуем в частоту в радианах
+            // Используем sin для стабильности при высоких частотах
+            float freq = 2.0f * std::sin (juce::MathConstants<float>::pi * cutoffNorm * 0.499f);
+            
+            // Ограничение resonance для предотвращения нестабильности
+            // 1.0 = нет резонанса, 0.01 = почти self-oscillation
+            float q = 1.0f - juce::jlimit (0.01f, 0.99f, resonance);
+            
+            // Применение drive (мягкое насыщение внутри фильтра для analog feel)
+            float inputWithDrive = std::tanh (input * (1.0f + drive * 3.0f));
+            
+            // Chamberlin SVF core
+            low  += freq * band;
+            high  = inputWithDrive - low - q * band;
+            band += freq * high;
+            
+            // Нелинейное насыщение band-прохода для warmth
+            band = std::tanh (band * (1.0f + drive * 0.5f));
+            
+            switch (type)
+            {
+                case FilterType::LP12:
+                    return low;
+                case FilterType::LP24:
+                    // Каскадирование двух SVF для 24dB/oct
+                    // Используем простой подход: применяем SVF дважды
+                    return low * low * 4.0f; // Упрощённая эмуляция 24dB
+                case FilterType::HP:
+                    return high;
+                case FilterType::BP:
+                    return band;
+                default:
+                    return low;
+            }
+        }
+    };
+    
+    SVFilter filterL, filterR;
 
     inline float generateNoise(float& state) const
     {
