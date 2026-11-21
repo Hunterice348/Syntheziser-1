@@ -9,6 +9,7 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
+    bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
@@ -17,196 +18,329 @@ public:
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
+    bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 3.0; }
-    
+
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int index) override {}
-    const juce::String getProgramName (int index) override { return {}; }
-    void changeProgramName (int index, const juce::String& newName) override {}
-    
+    void setCurrentProgram (int) override {}
+    const juce::String getProgramName (int) override { return {}; }
+    void changeProgramName (int, const juce::String&) override {}
+
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    enum class Waveform { Sine = 0, Saw, Square, Triangle };
+    enum class Waveform   { Sine = 0, Saw, Square, Triangle };
     enum class FilterType { LP12 = 0, LP24, HP, BP };
-    
-    enum class ModSource { None = 0, LFO, FilterEnv, Velocity, ModWheel, Osc1Audio, NoiseAudio, NumSources };
-    enum class ModDest { None = 0, FilterCutoff, Osc1Pitch, Osc2Pitch, MasterVol, FilterRes, NumDests };
-
-    struct PatchCable {
-        bool active = false;
-        ModSource source = ModSource::None;
-        ModDest destination = ModDest::None;
-        float amount = 0.5f;
-    };
+    enum class ModSource  { None = 0, LFO, FilterEnv, Velocity, ModWheel, Osc1Audio, NoiseAudio, NumSources };
+    enum class ModDest    { None = 0, FilterCutoff, Osc1Pitch, Osc2Pitch, MasterVol, FilterRes, NumDests };
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState parameters;
 
-    static constexpr int MAX_VOICES = 16;
-    static constexpr int NUM_PATCH_CABLES = 4;
-    static constexpr int MAX_DELAY_SAMPLES = 192000;
-    
+    static constexpr int MAX_VOICES  = 16;
+    static constexpr int NUM_PATCH   = 4;
+    static constexpr int DELAY_MAX   = 192000;
+    static constexpr int CHORUS_MAX  = 8192;
+
+    double sr = 44100.0;
+    juce::Random rng;
+
+    // ---------- СГЛАЖИВАНИЕ ВСЕХ ПАРАМЕТРОВ ----------
+    enum Sm { Volume, Osc2Level, Osc2Detune, SubLevel, NoiseLevel, MasterDrive,
+              Cutoff, Resonance, FilterDrive, KeyTrack, FilterEnvAmt,
+              LfoRate, LfoDepth, ModLfoPitch, ModLfoCutoff, ModEnvPitch, ModVelCutoff,
+              DistDrive, DistMix, ChorusRate, ChorusDepth, ChorusMix,
+              DelayTime, DelayFeedback, DelayMix, ReverbDecay, ReverbMix,
+              Unison, Macro, Patch0, Patch1, Patch2, Patch3, NumSmooth };
+
+    struct Smooth
+    {
+        juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> v;
+        std::atomic<float>* p = nullptr;
+
+        void prepare (double sampleRate, double seconds, std::atomic<float>* ptr)
+        {
+            p = ptr;
+            v.reset (sampleRate, seconds);
+            v.setCurrentAndTargetValue (p->load());
+        }
+        void update() { v.setTargetValue (p->load()); }
+        float next()  { return v.getNextValue(); }
+    };
+
+    std::array<Smooth, NumSmooth> sm;
+
+    // ---------- ФИЛЬТР (устойчивый SVF Simper, 2 каскада) ----------
+    struct SVF
+    {
+        float ic1a = 0.f, ic2a = 0.f, ic1b = 0.f, ic2b = 0.f;
+
+        void reset() { ic1a = ic2a = ic1b = ic2b = 0.f; }
+
+        float process (float in, float g, float k, FilterType type)
+        {
+            const float a1 = 1.0f / (1.0f + g * (g + k));
+            const float a2 = g * a1;
+            const float a3 = g * a2;
+
+            float v3 = in - ic2a;
+            float v1 = a1 * ic1a + a2 * v3;
+            float v2 = ic2a + a2 * ic1a + a3 * v3;
+            ic1a = 2.0f * v1 - ic1a;
+            ic2a = 2.0f * v2 - ic2a;
+
+            const float low  = v2;
+            const float band = v1;
+            const float high = in - k * v1 - v2;
+
+            if (type == FilterType::HP) return high;
+            if (type == FilterType::BP) return band;
+            if (type == FilterType::LP12) return low;
+
+            // LP24: второй каскад
+            float w3 = low - ic2b;
+            float w1 = a1 * ic1b + a2 * w3;
+            float w2 = ic2b + a2 * ic1b + a3 * w3;
+            ic1b = 2.0f * w1 - ic1b;
+            ic2b = 2.0f * w2 - ic2b;
+            return w2;
+        }
+    };
+
+    // ---------- ГОЛОС ----------
+    struct NoteParams
+    {
+        double sampleRate  = 44100.0;
+        float  osc2Detune  = 0.0f;
+        float  analogDrift = 0.0f;
+        float  lfoRate     = 2.0f;
+        float  velocity    = 1.0f;
+        float  unison      = 0.0f;
+    };
+
     struct Voice
     {
-        bool active = false;
-        int midiNote = -1;
+        bool  active = false, releasing = false, sustained = false;
+        int   midiNote = -1;
         float velocity = 0.0f;
-        float voiceDetune = 0.0f;
-        
-        double phase1 = 0.0, phaseInc1 = 0.0;
-        double phase2 = 0.0, phaseInc2 = 0.0;
-        double phaseSub = 0.0, phaseIncSub = 0.0;
-        float noiseState = 0.0f;
-        float driftOffset = 0.0f;
+        juce::uint32 serial = 0;
 
-        juce::ADSR adsr;
-        juce::ADSR::Parameters adsrParams;
-        juce::ADSR filterAdsr;
-        juce::ADSR::Parameters filterAdsrParams;
-        
-        double lfoPhase = 0.0;
-        double lfoPhaseInc = 0.0;
-        float lfoSHValue = 0.0f;
+        double phase1 = 0.0, phase2 = 0.0, phaseSub = 0.0;
+        double inc1 = 0.0, inc2 = 0.0, incSub = 0.0;
+        double lfoPhase = 0.0, lfoInc = 0.0;
+        float shValue = 0.0f;
+        float audioPitchMod = 0.0f;
+        float keyTrackMul = 1.0f;
+        float panL = 0.7071f, panR = 0.7071f;
+        juce::uint32 noiseSeed = 12345u;
 
-        void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount, float lfoRateHz, float vel, float unisonSpread)
+        juce::ADSR ampEnv, filterEnv;
+        juce::ADSR::Parameters ampPars, fltPars;
+        SVF filter;
+
+        void start (int note, float freq, const NoteParams& p, juce::Random& r, juce::uint32 s)
         {
-            active = true;
-            velocity = vel;
-            driftOffset = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * 2.0f * analogDriftAmount * 0.015f;
-            voiceDetune = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * unisonSpread;
-            
-            float freqBase = frequency * (1.0f + driftOffset + voiceDetune);
-            float freq2 = frequency * std::pow(2.0f, (detuneSemitones + driftOffset + voiceDetune) / 12.0f);
-            float freqSub = (frequency * 0.5f) * (1.0f + driftOffset + voiceDetune);
+            active = true; releasing = false; sustained = false;
+            midiNote = note; velocity = p.velocity; serial = s;
 
-            phaseInc1 = freqBase / sampleRate;
-            phaseInc2 = freq2 / sampleRate;
-            phaseIncSub = freqSub / sampleRate;
-            
-            phase1 = 0.0; phase2 = 0.0; phaseSub = 0.0;
-            noiseState = static_cast<float>(juce::Random::getSystemRandom().nextInt());
-            
-            lfoPhaseInc = lfoRateHz / sampleRate;
+            const float drift = (r.nextFloat() - 0.5f) * 2.0f * p.analogDrift * 0.015f;
+            const float uni   = (r.nextFloat() - 0.5f) * 2.0f * p.unison;
+            const float ratio = 1.0f + drift + uni;
+
+            const float f1 = freq * ratio;
+            const float f2 = freq * ratio * std::pow (2.0f, p.osc2Detune / 12.0f);
+            const float fs = freq * 0.5f * ratio;
+
+            inc1   = f1 / p.sampleRate;
+            inc2   = f2 / p.sampleRate;
+            incSub = fs / p.sampleRate;
+            lfoInc = p.lfoRate / p.sampleRate;
+
+            phase1 = phase2 = phaseSub = 0.0;
             lfoPhase = 0.0;
-            lfoSHValue = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f;
-            
-            adsr.noteOn();
-            filterAdsr.noteOn();
+            shValue = r.nextFloat() * 2.0f - 1.0f;
+            audioPitchMod = 0.0f;
+            noiseSeed = 12345u + s * 2654435761u;
+
+            // equal-power панорама для ширины Unison
+            const float pan = juce::jlimit (-1.0f, 1.0f, (r.nextFloat() * 2.0f - 1.0f) * p.unison * 20.0f);
+            const float ang = (pan + 1.0f) * 0.7853981f;
+            panL = std::cos (ang);
+            panR = std::sin (ang);
+
+            filter.reset();
+            ampEnv.noteOn();
+            filterEnv.noteOn();
         }
 
-        void noteOff() { adsr.noteOff(); filterAdsr.noteOff(); }
+        void stop (bool sustainPedal)
+        {
+            if (sustainPedal) { sustained = true; return; }
+            releasing = true;
+            ampEnv.noteOff();
+            filterEnv.noteOff();
+        }
     };
 
     std::array<Voice, MAX_VOICES> voices;
-    std::array<PatchCable, NUM_PATCH_CABLES> patchCables;
-    
-    Waveform currentWaveform1 = Waveform::Sine;
-    Waveform currentWaveform2 = Waveform::Saw;
-    FilterType currentFilterType = FilterType::LP12;
-    double currentSampleRate = 44100.0;
-    int lastNotePlayed = 60;
-    float currentModWheel = 0.0f;
+    juce::uint32 noteSerial = 0;
+    float normGain = 1.0f;
 
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDrive;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedCutoff;
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedResonance;
-
-    struct SVFilter
+    // ---------- ЭФФЕКТЫ ----------
+    struct Delay
     {
-        float low = 0.0f, band = 0.0f, high = 0.0f;
-        void reset() { low = band = high = 0.0f; }
-        float process (float input, float cutoffNorm, float resonance, float drive, FilterType type)
+        std::array<float, DELAY_MAX> buf {};
+        int wp = 0;
+        void reset() { buf.fill (0.0f); wp = 0; }
+        float process (float in, float len, float fb)
         {
-            float freq = 2.0f * std::sin (juce::MathConstants<float>::pi * cutoffNorm * 0.499f);
-            float q = 1.0f - juce::jlimit (0.01f, 0.99f, resonance);
-            float inputWithDrive = std::tanh (input * (1.0f + drive * 3.0f));
-            low  += freq * band;
-            high  = inputWithDrive - low - q * band;
-            band += freq * high;
-            band = std::tanh (band * (1.0f + drive * 0.5f));
-            switch (type)
+            float rp = (float) wp - len;
+            while (rp < 0.0f) rp += (float) DELAY_MAX;
+            const int i0 = (int) rp;
+            const int i1 = (i0 + 1) % DELAY_MAX;
+            const float fr = rp - (float) i0;
+            const float d = buf[(size_t) i0] + (buf[(size_t) i1] - buf[(size_t) i0]) * fr;
+            buf[(size_t) wp] = in + d * fb;
+            wp = (wp + 1) % DELAY_MAX;
+            return d;
+        }
+    };
+
+    struct Chorus
+    {
+        std::array<float, CHORUS_MAX> buf {};
+        int wp = 0;
+        double ph = 0.0;
+        void reset() { buf.fill (0.0f); wp = 0; ph = 0.0; }
+        float process (float in, float rate, float depth, float mix, double sampleRate, float phaseOffset)
+        {
+            ph += rate / sampleRate;
+            if (ph >= 1.0) ph -= 1.0;
+            double p = ph + phaseOffset;
+            if (p >= 1.0) p -= 1.0;
+            const float lfo = std::sin (6.2831853f * (float) p);
+            float len = (0.008f + lfo * depth * 0.004f) * (float) sampleRate;
+            len = juce::jlimit (1.0f, (float) (CHORUS_MAX - 2), len);
+            float rp = (float) wp - len;
+            while (rp < 0.0f) rp += (float) CHORUS_MAX;
+            const int i0 = (int) rp;
+            const int i1 = (i0 + 1) % CHORUS_MAX;
+            const float fr = rp - (float) i0;
+            const float wet = buf[(size_t) i0] + (buf[(size_t) i1] - buf[(size_t) i0]) * fr;
+            buf[(size_t) wp] = in;
+            wp = (wp + 1) % CHORUS_MAX;
+            return in + (wet - in) * mix;
+        }
+    };
+
+    struct Reverb
+    {
+        static constexpr int CMAX = 4096, AMAX = 2048;
+        std::array<float, CMAX> c[4] {};
+        std::array<float, AMAX> a[2] {};
+        int cl[4] { 1116, 1188, 1277, 1356 }, cp[4] { 0, 0, 0, 0 };
+        int al[2] { 556, 441 }, ap[2] { 0, 0 };
+        float cd[4] { 0, 0, 0, 0 };
+
+        void prepare (double sampleRate)
+        {
+            const float s = (float) (sampleRate / 44100.0);
+            const int base[4] { 1116, 1188, 1277, 1356 };
+            const int ab[2] { 556, 441 };
+            for (int i = 0; i < 4; ++i) cl[i] = juce::jlimit (1, CMAX - 1, (int) (base[i] * s));
+            for (int i = 0; i < 2; ++i) al[i] = juce::jlimit (1, AMAX - 1, (int) (ab[i] * s));
+            reset();
+        }
+        void reset()
+        {
+            for (auto& x : c) x.fill (0.0f);
+            for (auto& x : a) x.fill (0.0f);
+            for (int i = 0; i < 4; ++i) { cp[i] = 0; cd[i] = 0.0f; }
+            for (int i = 0; i < 2; ++i) ap[i] = 0;
+        }
+        float process (float in, float decay, float mix)
+        {
+            const float fb = 0.55f + decay * 0.42f;
+            const float damp = 0.35f;
+            float acc = 0.0f;
+            for (int i = 0; i < 4; ++i)
             {
-                case FilterType::LP12: return low;
-                case FilterType::LP24: return low * low * 4.0f;
-                case FilterType::HP:   return high;
-                case FilterType::BP:   return band;
-                default:               return low;
+                const float out = c[(size_t) i][(size_t) cp[i]];
+                cd[i] = out * (1.0f - damp) + cd[i] * damp;
+                c[(size_t) i][(size_t) cp[i]] = in + cd[i] * fb;
+                cp[i] = (cp[i] + 1) % cl[i];
+                acc += out;
             }
+            acc *= 0.25f;
+            for (int i = 0; i < 2; ++i)
+            {
+                const float bo = a[(size_t) i][(size_t) ap[i]];
+                const float v = acc - bo * 0.5f;
+                a[(size_t) i][(size_t) ap[i]] = v;
+                acc = bo + v * 0.5f;
+                ap[i] = (ap[i] + 1) % al[i];
+            }
+            return in + (acc - in) * mix;
         }
     };
-    
-    SVFilter filterL, filterR;
 
-    struct DelayLine
-    {
-        std::array<float, MAX_DELAY_SAMPLES> buffer {};
-        int writePos = 0;
-        void reset() { buffer.fill (0.0f); writePos = 0; }
-        float process (float input, int delaySamples, float feedback)
-        {
-            int readPos = writePos - delaySamples;
-            if (readPos < 0) readPos += MAX_DELAY_SAMPLES;
-            float delayed = buffer[readPos];
-            buffer[writePos] = input + delayed * feedback;
-            writePos++;
-            if (writePos >= MAX_DELAY_SAMPLES) writePos = 0;
-            return delayed;
-        }
-    };
-    
-    struct ChorusEffect
-    {
-        std::array<float, MAX_DELAY_SAMPLES> buffer {};
-        int writePos = 0;
-        double lfoPhase = 0.0;
-        void reset() { buffer.fill (0.0f); writePos = 0; lfoPhase = 0.0; }
-        float process (float input, float rate, float depth, float mix, double sampleRate)
-        {
-            float lfoValue = std::sin (2.0f * juce::MathConstants<float>::pi * (float)lfoPhase);
-            lfoPhase += rate / sampleRate;
-            if (lfoPhase >= 1.0) lfoPhase -= 1.0;
-            float baseDelay = 0.01f * (float)sampleRate;
-            float modDelay = baseDelay + lfoValue * depth * 0.005f * (float)sampleRate;
-            int readPos = writePos - (int)modDelay;
-            if (readPos < 0) readPos += MAX_DELAY_SAMPLES;
-            buffer[writePos] = input;
-            writePos++;
-            if (writePos >= MAX_DELAY_SAMPLES) writePos = 0;
-            float wet = buffer[readPos];
-            return input * (1.0f - mix) + wet * mix;
-        }
-    };
-    
-    struct ReverbEffect
-    {
-        std::array<float, 1200> comb1 {}; std::array<float, 1600> comb2 {};
-        std::array<float, 2000> comb3 {}; std::array<float, 2400> comb4 {};
-        int pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-        void reset() { comb1.fill(0.0f); comb2.fill(0.0f); comb3.fill(0.0f); comb4.fill(0.0f); pos1=pos2=pos3=pos4=0; }
-        float process (float input, float decay, float mix)
-        {
-            float feedback = juce::jlimit (0.0f, 0.95f, decay);
-            float out1 = comb1[pos1]; comb1[pos1] = input + out1 * feedback; pos1 = (pos1 + 1) % comb1.size();
-            float out2 = comb2[pos2]; comb2[pos2] = input + out2 * feedback; pos2 = (pos2 + 1) % comb2.size();
-            float out3 = comb3[pos3]; comb3[pos3] = input + out3 * feedback; pos3 = (pos3 + 1) % comb3.size();
-            float out4 = comb4[pos4]; comb4[pos4] = input + out4 * feedback; pos4 = (pos4 + 1) % comb4.size();
-            float wet = (out1 + out2 + out3 + out4) * 0.25f;
-            return input * (1.0f - mix) + wet * mix;
-        }
-    };
-    
-    DelayLine delayL, delayR;
-    ChorusEffect chorusL, chorusR;
-    ReverbEffect reverbL, reverbR;
+    Delay  delayL, delayR;
+    Chorus chorusL, chorusR;
+    Reverb reverbL, reverbR;
 
-    inline float generateNoise(float& state) const
+    // ---------- MIDI-СОСТОЯНИЕ ----------
+    float modWheel = 0.0f;
+    bool  sustainPedal = false;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> bend;
+
+    // ---------- ПАТЧ-БЕЙ ----------
+    struct Cable { ModSource src = ModSource::None; ModDest dst = ModDest::None; bool on = false; };
+    std::array<Cable, NUM_PATCH> cables;
+
+    Waveform   wf1 = Waveform::Sine, wf2 = Waveform::Saw, lfoWf = Waveform::Sine;
+    FilterType fType = FilterType::LP12;
+    bool lfoSH = false;
+
+    // ---------- УТИЛИТЫ ----------
+    static inline float blep (float t, float dt)
     {
-        state = state * 1664525.0f + 1013904223.0f;
-        return (state * 1.0f / 4294967296.0f) * 2.0f - 1.0f;
+        if (dt <= 0.0f) return 0.0f;
+        if (t < dt)      { t /= dt; return t + t - t * t - 1.0f; }
+        if (t > 1.0f - dt) { t = (t - 1.0f) / dt; return t * t + t + t + 1.0f; }
+        return 0.0f;
     }
+
+    static inline float osc (float ph, float dt, Waveform w)
+    {
+        switch (w)
+        {
+            case Waveform::Sine: return std::sin (6.2831853f * ph);
+            case Waveform::Saw:  return (2.0f * ph - 1.0f) - blep (ph, dt);
+            case Waveform::Square:
+            {
+                float s = (ph < 0.5f) ? 1.0f : -1.0f;
+                s += blep (ph, dt);
+                float t2 = ph + 0.5f; if (t2 >= 1.0f) t2 -= 1.0f;
+                return s - blep (t2, dt);
+            }
+            case Waveform::Triangle:
+            default:
+                if (ph < 0.25f) return 4.0f * ph;
+                if (ph < 0.75f) return 2.0f - 4.0f * ph;
+                return 4.0f * ph - 4.0f;
+        }
+    }
+
+    static inline float noise (juce::uint32& s)
+    {
+        s = s * 1664525u + 1013904223u;
+        return (float) (juce::int32 (s)) * (1.0f / 2147483648.0f);
+    }
+
+    void allNotesOff (bool force);
+    void resetDsp();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HuntericeAbyssAudioProcessor)
 };
