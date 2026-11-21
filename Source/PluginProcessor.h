@@ -41,6 +41,7 @@ private:
     {
         bool active = false;
         int midiNote = -1;
+        float velocity = 0.0f;
         
         double phase1 = 0.0, phaseInc1 = 0.0;
         double phase2 = 0.0, phaseInc2 = 0.0;
@@ -58,9 +59,10 @@ private:
         double lfoPhaseInc = 0.0;
         float lfoSHValue = 0.0f;
 
-        void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount, float lfoRateHz)
+        void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount, float lfoRateHz, float vel)
         {
             active = true;
+            velocity = vel;
             driftOffset = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * 2.0f * analogDriftAmount * 0.015f;
             
             float freq1 = frequency * (1.0f + driftOffset);
@@ -95,6 +97,7 @@ private:
     FilterType currentFilterType = FilterType::LP12;
     double currentSampleRate = 44100.0;
     int lastNotePlayed = 60;
+    float currentModWheel = 0.0f;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDrive;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedCutoff;
