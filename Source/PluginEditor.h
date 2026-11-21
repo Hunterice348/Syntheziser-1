@@ -22,6 +22,7 @@ private:
     juce::Slider filterCutoffSlider, filterResonanceSlider, filterDriveSlider, filterKeyTrackSlider;
     juce::Slider filterAttackSlider, filterDecaySlider, filterSustainSlider, filterReleaseSlider, filterEnvAmountSlider;
     juce::Slider lfoRateSlider, lfoDepthSlider;
+    juce::Slider modLfoToPitchSlider, modLfoToCutoffSlider, modEnvToPitchSlider, modVelToCutoffSlider;
     juce::ComboBox waveform1Box, waveform2Box, filterTypeBox, lfoWaveformBox;
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -33,6 +34,7 @@ private:
     std::unique_ptr<Attachment> filterCutoffAtt, filterResonanceAtt, filterDriveAtt, filterKeyTrackAtt;
     std::unique_ptr<Attachment> filterAttackAtt, filterDecayAtt, filterSustainAtt, filterReleaseAtt, filterEnvAmountAtt;
     std::unique_ptr<Attachment> lfoRateAtt, lfoDepthAtt;
+    std::unique_ptr<Attachment> modLfoToPitchAtt, modLfoToCutoffAtt, modEnvToPitchAtt, modVelToCutoffAtt;
     std::unique_ptr<ComboBoxAttachment> wf1Att, wf2Att, filterTypeAtt, lfoWaveformAtt;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HuntericeAbyssAudioProcessorEditor)
