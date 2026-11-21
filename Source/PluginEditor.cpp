@@ -1,27 +1,119 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+// ============================================================
+// AbyssLookAndFeel - кастомный стиль в стиле Volca Drum
+// ============================================================
+AbyssLookAndFeel::AbyssLookAndFeel()
+{
+    setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xFFB41E28));
+    setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colour (0xFF3A3A44));
+    setColour (juce::Slider::thumbColourId, juce::Colours::white);
+    setColour (juce::Slider::textBoxTextColourId, juce::Colours::white);
+    setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xFF1E1E24));
+    setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xFF2A2A32));
+    setColour (juce::ComboBox::textColourId, juce::Colours::white);
+    setColour (juce::ComboBox::arrowColourId, juce::Colour (0xFFB41E28));
+    setColour (juce::ToggleButton::textColourId, juce::Colours::white);
+    setColour (juce::ToggleButton::tickColourId, juce::Colour (0xFFB41E28));
+    setColour (juce::ToggleButton::tickDisabledColourId, juce::Colour (0xFF5A5A64));
+}
+
+void AbyssLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                                         float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
+                                         juce::Slider&)
+{
+    auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat();
+    auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) / 2.0f;
+    auto centre = bounds.getCentre();
+
+    // Тень под ручкой
+    g.setColour (juce::Colour (0x50000000));
+    g.fillEllipse (bounds.reduced (3).translated (1.5f, 2.0f));
+
+    // Основной круг с металлическим градиентом
+    juce::ColourGradient grad (
+        juce::Colour (0xFF6A6A74), centre.x - radius * 0.7f, centre.y - radius * 0.7f,
+        juce::Colour (0xFF1A1A22), centre.x + radius * 0.7f, centre.y + radius * 0.7f,
+        true);
+    grad.addColour (0.5, juce::Colour (0xFF3A3A44));
+    g.setGradientFill (grad);
+    g.fillEllipse (bounds.reduced (5));
+
+    // Внешняя обводка
+    g.setColour (juce::Colour (0xFF0A0A12));
+    g.drawEllipse (bounds.reduced (5), 1.5f);
+
+    // Внутренний блик (металлический эффект)
+    g.setColour (juce::Colour (0x30FFFFFF));
+    g.fillEllipse (bounds.reduced (10).withTrimmedBottom (radius * 0.6f));
+
+    // Индикаторная дуга (красная)
+    float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
+    juce::Path arc;
+    arc.addCentredArc (centre.x, centre.y, radius - 3, radius - 3,
+                       0.0f, rotaryStartAngle, angle, true);
+    g.setColour (juce::Colour (0xFFB41E28));
+    g.strokePath (arc, juce::PathStrokeType (2.5f));
+
+    // Индикаторная точка (как на Volca Drum)
+    juce::Point<float> indicatorPoint (
+        centre.x + std::cos (angle) * (radius - 12),
+        centre.y + std::sin (angle) * (radius - 12));
+    g.setColour (juce::Colours::white);
+    g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (indicatorPoint));
+}
+
+void AbyssLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
+                                     int, int, int, int, juce::ComboBox& box)
+{
+    juce::Rectangle<int> boxBounds (0, 0, width, height);
+    
+    // Фон с градиентом
+    juce::ColourGradient grad (
+        juce::Colour (0xFF3A3A44), 0.0f, 0.0f,
+        juce::Colour (0xFF1A1A22), 0.0f, (float) height,
+        false);
+    g.setGradientFill (grad);
+    g.fillRoundedRectangle (boxBounds.toFloat(), 4.0f);
+    
+    // Обводка
+    g.setColour (juce::Colour (0xFF5A5A64));
+    g.drawRoundedRectangle (boxBounds.toFloat().reduced (0.5f), 4.0f, 1.0f);
+    
+    // Стрелка
+    juce::Path arrow;
+    auto arrowX = (float) width - 14.0f;
+    auto arrowY = (float) height * 0.5f;
+    arrow.addTriangle (arrowX - 4.0f, arrowY - 3.0f,
+                       arrowX + 4.0f, arrowY - 3.0f,
+                       arrowX, arrowY + 3.0f);
+    g.setColour (juce::Colour (0xFFB41E28));
+    g.fillPath (arrow);
+}
+
+// ============================================================
+// Editor Constructor
+// ============================================================
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
-    setSize (1400, 820);
+    setLookAndFeel (&abyssLF);
+    setSize ((int) BASE_WIDTH, (int) BASE_HEIGHT);
 
-    auto setupSlider = [](juce::Slider& s) {
+    auto setupSlider = [this](juce::Slider& s) {
         s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 18);
-        s.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white);
-        s.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xFF1E1E24));
-        s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-        s.setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xFFB41E28));
-        s.setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colour (0xFF5A5A64));
-        s.setColour (juce::Slider::thumbColourId, juce::Colours::white);
+        s.setLookAndFeel (&abyssLF);
+        addAndMakeVisible (s);
     };
 
     auto setupLabel = [](juce::Label& l, const juce::String& text, int fontSize = 11) {
         l.setText (text, juce::dontSendNotification);
         l.setJustificationType (juce::Justification::centred);
         l.setColour (juce::Label::textColourId, juce::Colours::white);
-        l.setFont (juce::Font ((float) fontSize, juce::Font::plain));
+        l.setFont (juce::Font ((float) fontSize, juce::Font::bold));
     };
 
     auto setupSectionLabel = [](juce::Label& l, const juce::String& text) {
@@ -31,17 +123,15 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
         l.setFont (juce::Font (14.0f, juce::Font::bold));
     };
 
-    auto setupCombo = [](juce::ComboBox& c) {
-        c.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xFF2A2A32));
-        c.setColour (juce::ComboBox::textColourId, juce::Colours::white);
+    auto setupCombo = [this](juce::ComboBox& c) {
+        c.setLookAndFeel (&abyssLF);
+        addAndMakeVisible (c);
     };
 
-    // SYNTH SECTION
-    setupSlider (osc2LevelSlider); addAndMakeVisible (osc2LevelSlider);
-    setupSlider (osc2DetuneSlider); addAndMakeVisible (osc2DetuneSlider);
-    setupSlider (subLevelSlider); addAndMakeVisible (subLevelSlider);
-    setupSlider (noiseLevelSlider); addAndMakeVisible (noiseLevelSlider);
-    setupSlider (unisonSpreadSlider); addAndMakeVisible (unisonSpreadSlider);
+    // OSC
+    setupSlider (osc2LevelSlider); setupSlider (osc2DetuneSlider);
+    setupSlider (subLevelSlider); setupSlider (noiseLevelSlider);
+    setupSlider (unisonSpreadSlider);
     setupLabel (osc2LevelLabel, "OSC2 LVL"); addAndMakeVisible (osc2LevelLabel);
     setupLabel (osc2DetuneLabel, "OSC2 DET"); addAndMakeVisible (osc2DetuneLabel);
     setupLabel (subLevelLabel, "SUB LVL"); addAndMakeVisible (subLevelLabel);
@@ -50,32 +140,28 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
 
     waveform1Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     waveform2Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
-    addAndMakeVisible (waveform1Box); addAndMakeVisible (waveform2Box);
+    setupCombo (waveform1Box); setupCombo (waveform2Box);
     setupLabel (waveform1Label, "OSC 1"); addAndMakeVisible (waveform1Label);
     setupLabel (waveform2Label, "OSC 2"); addAndMakeVisible (waveform2Label);
 
-    setupSlider (filterCutoffSlider); addAndMakeVisible (filterCutoffSlider);
-    setupSlider (filterResonanceSlider); addAndMakeVisible (filterResonanceSlider);
-    setupSlider (filterDriveSlider); addAndMakeVisible (filterDriveSlider);
-    setupSlider (filterKeyTrackSlider); addAndMakeVisible (filterKeyTrackSlider);
+    // FILTER
+    setupSlider (filterCutoffSlider); setupSlider (filterResonanceSlider);
+    setupSlider (filterDriveSlider); setupSlider (filterKeyTrackSlider);
     setupLabel (filterCutoffLabel, "CUTOFF"); addAndMakeVisible (filterCutoffLabel);
     setupLabel (filterResonanceLabel, "RESO"); addAndMakeVisible (filterResonanceLabel);
     setupLabel (filterDriveLabel, "DRV"); addAndMakeVisible (filterDriveLabel);
     setupLabel (filterKeyTrackLabel, "KEY TRK"); addAndMakeVisible (filterKeyTrackLabel);
 
     filterTypeBox.addItemList ({ "LP 12dB", "LP 24dB", "High Pass", "Band Pass" }, 1);
-    addAndMakeVisible (filterTypeBox);
+    setupCombo (filterTypeBox);
     setupLabel (filterTypeLabel, "FILTER TYPE"); addAndMakeVisible (filterTypeLabel);
 
-    setupSlider (attackSlider); addAndMakeVisible (attackSlider);
-    setupSlider (decaySlider); addAndMakeVisible (decaySlider);
-    setupSlider (sustainSlider); addAndMakeVisible (sustainSlider);
-    setupSlider (releaseSlider); addAndMakeVisible (releaseSlider);
-    setupSlider (filterAttackSlider); addAndMakeVisible (filterAttackSlider);
-    setupSlider (filterDecaySlider); addAndMakeVisible (filterDecaySlider);
-    setupSlider (filterSustainSlider); addAndMakeVisible (filterSustainSlider);
-    setupSlider (filterReleaseSlider); addAndMakeVisible (filterReleaseSlider);
-    setupSlider (filterEnvAmountSlider); addAndMakeVisible (filterEnvAmountSlider);
+    // ENV
+    setupSlider (attackSlider); setupSlider (decaySlider);
+    setupSlider (sustainSlider); setupSlider (releaseSlider);
+    setupSlider (filterAttackSlider); setupSlider (filterDecaySlider);
+    setupSlider (filterSustainSlider); setupSlider (filterReleaseSlider);
+    setupSlider (filterEnvAmountSlider);
     setupLabel (attackLabel, "A"); addAndMakeVisible (attackLabel);
     setupLabel (decayLabel, "D"); addAndMakeVisible (decayLabel);
     setupLabel (sustainLabel, "S"); addAndMakeVisible (sustainLabel);
@@ -86,36 +172,28 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupLabel (filterReleaseLabel, "F-R"); addAndMakeVisible (filterReleaseLabel);
     setupLabel (filterEnvAmountLabel, "ENV AMT"); addAndMakeVisible (filterEnvAmountLabel);
 
-    setupSlider (lfoRateSlider); addAndMakeVisible (lfoRateSlider);
-    setupSlider (lfoDepthSlider); addAndMakeVisible (lfoDepthSlider);
+    // LFO
+    setupSlider (lfoRateSlider); setupSlider (lfoDepthSlider);
     setupLabel (lfoRateLabel, "RATE"); addAndMakeVisible (lfoRateLabel);
     setupLabel (lfoDepthLabel, "DEPTH"); addAndMakeVisible (lfoDepthLabel);
 
     lfoWaveformBox.addItemList ({ "Sine", "Triangle", "Saw", "Square", "S&H" }, 1);
-    addAndMakeVisible (lfoWaveformBox);
+    setupCombo (lfoWaveformBox);
     setupLabel (lfoWaveformLabel, "LFO WAVE"); addAndMakeVisible (lfoWaveformLabel);
 
-    setupSlider (modLfoToPitchSlider); addAndMakeVisible (modLfoToPitchSlider);
-    setupSlider (modLfoToCutoffSlider); addAndMakeVisible (modLfoToCutoffSlider);
-    setupSlider (modEnvToPitchSlider); addAndMakeVisible (modEnvToPitchSlider);
-    setupSlider (modVelToCutoffSlider); addAndMakeVisible (modVelToCutoffSlider);
+    // MOD
+    setupSlider (modLfoToPitchSlider); setupSlider (modLfoToCutoffSlider);
+    setupSlider (modEnvToPitchSlider); setupSlider (modVelToCutoffSlider);
     setupLabel (modLfoToPitchLabel, "LFO>PIT"); addAndMakeVisible (modLfoToPitchLabel);
     setupLabel (modLfoToCutoffLabel, "LFO>CUT"); addAndMakeVisible (modLfoToCutoffLabel);
     setupLabel (modEnvToPitchLabel, "ENV>PIT"); addAndMakeVisible (modEnvToPitchLabel);
     setupLabel (modVelToCutoffLabel, "VEL>CUT"); addAndMakeVisible (modVelToCutoffLabel);
 
-    setupCombo (patch1SrcBox); addAndMakeVisible (patch1SrcBox);
-    setupCombo (patch1DstBox); addAndMakeVisible (patch1DstBox);
-    setupSlider (patch1AmtSlider); addAndMakeVisible (patch1AmtSlider);
-    setupCombo (patch2SrcBox); addAndMakeVisible (patch2SrcBox);
-    setupCombo (patch2DstBox); addAndMakeVisible (patch2DstBox);
-    setupSlider (patch2AmtSlider); addAndMakeVisible (patch2AmtSlider);
-    setupCombo (patch3SrcBox); addAndMakeVisible (patch3SrcBox);
-    setupCombo (patch3DstBox); addAndMakeVisible (patch3DstBox);
-    setupSlider (patch3AmtSlider); addAndMakeVisible (patch3AmtSlider);
-    setupCombo (patch4SrcBox); addAndMakeVisible (patch4SrcBox);
-    setupCombo (patch4DstBox); addAndMakeVisible (patch4DstBox);
-    setupSlider (patch4AmtSlider); addAndMakeVisible (patch4AmtSlider);
+    // PATCH
+    setupCombo (patch1SrcBox); setupCombo (patch1DstBox); setupSlider (patch1AmtSlider);
+    setupCombo (patch2SrcBox); setupCombo (patch2DstBox); setupSlider (patch2AmtSlider);
+    setupCombo (patch3SrcBox); setupCombo (patch3DstBox); setupSlider (patch3AmtSlider);
+    setupCombo (patch4SrcBox); setupCombo (patch4DstBox); setupSlider (patch4AmtSlider);
 
     setupLabel (patch1AmtLabel, "AMT 1"); addAndMakeVisible (patch1AmtLabel);
     setupLabel (patch2AmtLabel, "AMT 2"); addAndMakeVisible (patch2AmtLabel);
@@ -137,16 +215,11 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     patch3SrcBox.addItemList (srcList, 1); patch3DstBox.addItemList (dstList, 1);
     patch4SrcBox.addItemList (srcList, 1); patch4DstBox.addItemList (dstList, 1);
 
-    setupSlider (distDriveSlider); addAndMakeVisible (distDriveSlider);
-    setupSlider (distMixSlider); addAndMakeVisible (distMixSlider);
-    setupSlider (chorusRateSlider); addAndMakeVisible (chorusRateSlider);
-    setupSlider (chorusDepthSlider); addAndMakeVisible (chorusDepthSlider);
-    setupSlider (chorusMixSlider); addAndMakeVisible (chorusMixSlider);
-    setupSlider (delayTimeSlider); addAndMakeVisible (delayTimeSlider);
-    setupSlider (delayFeedbackSlider); addAndMakeVisible (delayFeedbackSlider);
-    setupSlider (delayMixSlider); addAndMakeVisible (delayMixSlider);
-    setupSlider (reverbDecaySlider); addAndMakeVisible (reverbDecaySlider);
-    setupSlider (reverbMixSlider); addAndMakeVisible (reverbMixSlider);
+    // FX
+    setupSlider (distDriveSlider); setupSlider (distMixSlider);
+    setupSlider (chorusRateSlider); setupSlider (chorusDepthSlider); setupSlider (chorusMixSlider);
+    setupSlider (delayTimeSlider); setupSlider (delayFeedbackSlider); setupSlider (delayMixSlider);
+    setupSlider (reverbDecaySlider); setupSlider (reverbMixSlider);
 
     setupLabel (distDriveLabel, "DRV"); addAndMakeVisible (distDriveLabel);
     setupLabel (distMixLabel, "MIX"); addAndMakeVisible (distMixLabel);
@@ -160,78 +233,54 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupLabel (reverbMixLabel, "MIX"); addAndMakeVisible (reverbMixLabel);
 
     fxBypassButton.setButtonText ("FX BYPASS");
-    fxBypassButton.setColour (juce::ToggleButton::textColourId, juce::Colours::white);
     addAndMakeVisible (fxBypassButton);
 
-    setupSlider (analogDriftSlider); addAndMakeVisible (analogDriftSlider);
-    setupSlider (masterDriveSlider); addAndMakeVisible (masterDriveSlider);
-    setupSlider (volumeSlider); addAndMakeVisible (volumeSlider);
-    setupSlider (macroMorphSlider); addAndMakeVisible (macroMorphSlider);
+    // MASTER
+    setupSlider (analogDriftSlider); setupSlider (masterDriveSlider);
+    setupSlider (volumeSlider); setupSlider (macroMorphSlider);
     setupLabel (analogDriftLabel, "DRIFT"); addAndMakeVisible (analogDriftLabel);
     setupLabel (masterDriveLabel, "DRV"); addAndMakeVisible (masterDriveLabel);
     setupLabel (volumeLabel, "VOLUME"); addAndMakeVisible (volumeLabel);
     setupLabel (macroMorphLabel, "CLEAN < > DIRTY"); addAndMakeVisible (macroMorphLabel);
 
-    // DRUM MACHINE (Stage 14)
-    setupSlider (drumVolSlider); addAndMakeVisible (drumVolSlider);
-    setupSlider (drumDriveSlider); addAndMakeVisible (drumDriveSlider);
+    // DRUM MACHINE
+    setupSlider (drumVolSlider); setupSlider (drumDriveSlider);
     setupLabel (drumVolLabel, "DRUM VOL"); addAndMakeVisible (drumVolLabel);
     setupLabel (drumDriveLabel, "DRUM DRV"); addAndMakeVisible (drumDriveLabel);
 
-    setupSlider (kickLvlSlider); addAndMakeVisible (kickLvlSlider);
-    setupSlider (kickTuneSlider); addAndMakeVisible (kickTuneSlider);
-    setupSlider (kickDecaySlider); addAndMakeVisible (kickDecaySlider);
-    setupSlider (kickToneSlider); addAndMakeVisible (kickToneSlider);
+    setupSlider (kickLvlSlider); setupSlider (kickTuneSlider); setupSlider (kickDecaySlider); setupSlider (kickToneSlider);
+    setupSlider (snareLvlSlider); setupSlider (snareTuneSlider); setupSlider (snareDecaySlider); setupSlider (snareToneSlider);
+    setupSlider (hatLvlSlider); setupSlider (hatTuneSlider); setupSlider (hatDecaySlider); setupSlider (hatToneSlider);
+    setupSlider (clapLvlSlider); setupSlider (clapTuneSlider); setupSlider (clapDecaySlider); setupSlider (clapToneSlider);
+    setupSlider (tomLvlSlider); setupSlider (tomTuneSlider); setupSlider (tomDecaySlider); setupSlider (tomToneSlider);
+    setupSlider (percLvlSlider); setupSlider (percTuneSlider); setupSlider (percDecaySlider); setupSlider (percToneSlider);
+
     setupLabel (kickLvlLabel, "KICK LVL"); addAndMakeVisible (kickLvlLabel);
     setupLabel (kickTuneLabel, "KICK TUNE"); addAndMakeVisible (kickTuneLabel);
     setupLabel (kickDecayLabel, "KICK DEC"); addAndMakeVisible (kickDecayLabel);
     setupLabel (kickToneLabel, "KICK TONE"); addAndMakeVisible (kickToneLabel);
-
-    setupSlider (snareLvlSlider); addAndMakeVisible (snareLvlSlider);
-    setupSlider (snareTuneSlider); addAndMakeVisible (snareTuneSlider);
-    setupSlider (snareDecaySlider); addAndMakeVisible (snareDecaySlider);
-    setupSlider (snareToneSlider); addAndMakeVisible (snareToneSlider);
     setupLabel (snareLvlLabel, "SNARE LVL"); addAndMakeVisible (snareLvlLabel);
     setupLabel (snareTuneLabel, "SNARE TUNE"); addAndMakeVisible (snareTuneLabel);
     setupLabel (snareDecayLabel, "SNARE DEC"); addAndMakeVisible (snareDecayLabel);
     setupLabel (snareToneLabel, "SNARE TONE"); addAndMakeVisible (snareToneLabel);
-
-    setupSlider (hatLvlSlider); addAndMakeVisible (hatLvlSlider);
-    setupSlider (hatTuneSlider); addAndMakeVisible (hatTuneSlider);
-    setupSlider (hatDecaySlider); addAndMakeVisible (hatDecaySlider);
-    setupSlider (hatToneSlider); addAndMakeVisible (hatToneSlider);
     setupLabel (hatLvlLabel, "HAT LVL"); addAndMakeVisible (hatLvlLabel);
     setupLabel (hatTuneLabel, "HAT TUNE"); addAndMakeVisible (hatTuneLabel);
     setupLabel (hatDecayLabel, "HAT DEC"); addAndMakeVisible (hatDecayLabel);
     setupLabel (hatToneLabel, "HAT TONE"); addAndMakeVisible (hatToneLabel);
-
-    setupSlider (clapLvlSlider); addAndMakeVisible (clapLvlSlider);
-    setupSlider (clapTuneSlider); addAndMakeVisible (clapTuneSlider);
-    setupSlider (clapDecaySlider); addAndMakeVisible (clapDecaySlider);
-    setupSlider (clapToneSlider); addAndMakeVisible (clapToneSlider);
     setupLabel (clapLvlLabel, "CLAP LVL"); addAndMakeVisible (clapLvlLabel);
     setupLabel (clapTuneLabel, "CLAP TUNE"); addAndMakeVisible (clapTuneLabel);
     setupLabel (clapDecayLabel, "CLAP DEC"); addAndMakeVisible (clapDecayLabel);
     setupLabel (clapToneLabel, "CLAP TONE"); addAndMakeVisible (clapToneLabel);
-
-    setupSlider (tomLvlSlider); addAndMakeVisible (tomLvlSlider);
-    setupSlider (tomTuneSlider); addAndMakeVisible (tomTuneSlider);
-    setupSlider (tomDecaySlider); addAndMakeVisible (tomDecaySlider);
-    setupSlider (tomToneSlider); addAndMakeVisible (tomToneSlider);
     setupLabel (tomLvlLabel, "TOM LVL"); addAndMakeVisible (tomLvlLabel);
     setupLabel (tomTuneLabel, "TOM TUNE"); addAndMakeVisible (tomTuneLabel);
     setupLabel (tomDecayLabel, "TOM DEC"); addAndMakeVisible (tomDecayLabel);
     setupLabel (tomToneLabel, "TOM TONE"); addAndMakeVisible (tomToneLabel);
-
-    setupSlider (percLvlSlider); addAndMakeVisible (percLvlSlider);
-    setupSlider (percTuneSlider); addAndMakeVisible (percTuneSlider);
-    setupSlider (percDecaySlider); addAndMakeVisible (percDecaySlider);
-    setupSlider (percToneSlider); addAndMakeVisible (percToneSlider);
     setupLabel (percLvlLabel, "PERC LVL"); addAndMakeVisible (percLvlLabel);
     setupLabel (percTuneLabel, "PERC TUNE"); addAndMakeVisible (percTuneLabel);
     setupLabel (percDecayLabel, "PERC DEC"); addAndMakeVisible (percDecayLabel);
     setupLabel (percToneLabel, "PERC TONE"); addAndMakeVisible (percToneLabel);
 
+    // SECTION LABELS
     setupSectionLabel (sectionOsc, "OSCILLATORS"); addAndMakeVisible (sectionOsc);
     setupSectionLabel (sectionFilter, "FILTER"); addAndMakeVisible (sectionFilter);
     setupSectionLabel (sectionEnv, "ENVELOPE"); addAndMakeVisible (sectionEnv);
@@ -241,6 +290,17 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSectionLabel (sectionFx, "EFFECTS"); addAndMakeVisible (sectionFx);
     setupSectionLabel (sectionMaster, "MASTER"); addAndMakeVisible (sectionMaster);
     setupSectionLabel (sectionDrum, "DRUM MACHINE"); addAndMakeVisible (sectionDrum);
+
+    // SCALE SELECTOR
+    scaleBox.addItem ("50%", 1);
+    scaleBox.addItem ("75%", 2);
+    scaleBox.addItem ("100%", 3);
+    scaleBox.addItem ("125%", 4);
+    scaleBox.addItem ("150%", 5);
+    scaleBox.setSelectedId (3);
+    scaleBox.addListener (this);
+    setupCombo (scaleBox);
+    setupLabel (scaleLabel, "UI SCALE"); addAndMakeVisible (scaleLabel);
 
     // ATTACHMENTS
     attackAtt = std::make_unique<Attachment> (parameters, "attack", attackSlider);
@@ -327,39 +387,65 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     percToneAtt = std::make_unique<Attachment> (parameters, "percTone", percToneSlider);
 }
 
-HuntericeAbyssAudioProcessorEditor::~HuntericeAbyssAudioProcessorEditor() {}
+HuntericeAbyssAudioProcessorEditor::~HuntericeAbyssAudioProcessorEditor()
+{
+    setLookAndFeel (nullptr);
+}
+
+void HuntericeAbyssAudioProcessorEditor::comboBoxChanged (juce::ComboBox* comboBoxThatHasChanged)
+{
+    if (comboBoxThatHasChanged == &scaleBox)
+    {
+        int id = scaleBox.getSelectedId();
+        float newScale = 1.0f;
+        if (id == 1) newScale = 0.5f;
+        else if (id == 2) newScale = 0.75f;
+        else if (id == 3) newScale = 1.0f;
+        else if (id == 4) newScale = 1.25f;
+        else if (id == 5) newScale = 1.5f;
+        
+        if (newScale != scaleFactor)
+        {
+            scaleFactor = newScale;
+            setSize ((int) (BASE_WIDTH * scaleFactor), (int) (BASE_HEIGHT * scaleFactor));
+            resized();
+        }
+    }
+}
 
 void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xFF1E1E24));
+
     g.setColour (juce::Colours::white);
-    g.setFont (juce::Font (22.0f, juce::Font::bold));
-    g.drawText ("HUNTERICE ABYSS", getLocalBounds().removeFromTop (32), juce::Justification::centred);
+    g.setFont (juce::Font (22.0f * scaleFactor, juce::Font::bold));
+    g.drawText ("HUNTERICE ABYSS", getLocalBounds().removeFromTop ((int)(32 * scaleFactor)), juce::Justification::centred);
+
     g.setColour (juce::Colour (0xFFB41E28));
-    g.fillRect (0, 32, getWidth(), 2);
+    g.fillRect (0, (int)(32 * scaleFactor), getWidth(), 2);
 
-    auto area = getLocalBounds().reduced (10).withTrimmedTop (36);
-    auto synthArea = area.removeFromTop (320);
-    auto drumArea = area.removeFromTop (200);
-    auto fxArea = area.removeFromTop (180);
+    auto area = getLocalBounds().reduced ((int)(10 * scaleFactor)).withTrimmedTop ((int)(36 * scaleFactor));
+    auto synthArea = area.removeFromTop ((int)(320 * scaleFactor));
+    auto drumArea = area.removeFromTop ((int)(200 * scaleFactor));
+    auto fxArea = area.removeFromTop ((int)(180 * scaleFactor));
 
-    auto oscArea = synthArea.removeFromLeft (180);
+    auto oscArea = synthArea.removeFromLeft ((int)(180 * scaleFactor));
     g.setColour (juce::Colour (0xFF2A1E1E)); g.fillRect (oscArea);
     g.setColour (juce::Colour (0xFFB41E28)); g.drawRect (oscArea, 1);
 
-    auto filterArea = synthArea.removeFromLeft (180);
+    auto filterArea = synthArea.removeFromLeft ((int)(180 * scaleFactor));
     g.setColour (juce::Colour (0xFF1E1E2A)); g.fillRect (filterArea);
     g.setColour (juce::Colour (0xFF4169E1)); g.drawRect (filterArea, 1);
 
-    auto envArea = synthArea.removeFromLeft (280);
+    auto envArea = synthArea.removeFromLeft ((int)(280 * scaleFactor));
     g.setColour (juce::Colour (0xFF1E2A1E)); g.fillRect (envArea);
     g.setColour (juce::Colour (0xFF3CB371)); g.drawRect (envArea, 1);
 
-    auto lfoArea = synthArea.removeFromLeft (140);
+    auto lfoArea = synthArea.removeFromLeft ((int)(140 * scaleFactor));
     g.setColour (juce::Colour (0xFF2A2A1E)); g.fillRect (lfoArea);
     g.setColour (juce::Colour (0xFFDAA520)); g.drawRect (lfoArea, 1);
 
-    auto modArea = synthArea.removeFromLeft (160);
+    auto modArea = synthArea.removeFromLeft ((int)(160 * scaleFactor));
     g.setColour (juce::Colour (0xFF2A1E2A)); g.fillRect (modArea);
     g.setColour (juce::Colour (0xFF9370DB)); g.drawRect (modArea, 1);
 
@@ -379,160 +465,167 @@ void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
 
 void HuntericeAbyssAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced (10).withTrimmedTop (36);
-    auto synthArea = area.removeFromTop (320);
-    auto drumArea = area.removeFromTop (200);
-    auto fxArea = area.removeFromTop (180);
+    const float s = scaleFactor;
+    auto area = getLocalBounds().reduced ((int)(10 * s)).withTrimmedTop ((int)(36 * s));
+    auto synthArea = area.removeFromTop ((int)(320 * s));
+    auto drumArea = area.removeFromTop ((int)(200 * s));
+    auto fxArea = area.removeFromTop ((int)(180 * s));
     auto bottomArea = area;
 
     // OSC
-    auto oscArea = synthArea.removeFromLeft (180);
-    sectionOsc.setBounds (oscArea.removeFromTop (22));
-    waveform1Label.setBounds (oscArea.removeFromTop (14));
-    waveform1Box.setBounds (oscArea.removeFromTop (22).reduced (10, 2));
-    waveform2Label.setBounds (oscArea.removeFromTop (14));
-    waveform2Box.setBounds (oscArea.removeFromTop (22).reduced (10, 2));
-    oscArea.removeFromTop (4);
-    osc2LevelLabel.setBounds (oscArea.removeFromTop (12)); osc2LevelSlider.setBounds (oscArea.removeFromTop (46));
-    osc2DetuneLabel.setBounds (oscArea.removeFromTop (12)); osc2DetuneSlider.setBounds (oscArea.removeFromTop (46));
-    subLevelLabel.setBounds (oscArea.removeFromTop (12)); subLevelSlider.setBounds (oscArea.removeFromTop (46));
-    noiseLevelLabel.setBounds (oscArea.removeFromTop (12)); noiseLevelSlider.setBounds (oscArea.removeFromTop (46));
-    unisonSpreadLabel.setBounds (oscArea.removeFromTop (12)); unisonSpreadSlider.setBounds (oscArea.removeFromTop (46));
+    auto oscArea = synthArea.removeFromLeft ((int)(180 * s));
+    sectionOsc.setBounds (oscArea.removeFromTop ((int)(22 * s)));
+    waveform1Label.setBounds (oscArea.removeFromTop ((int)(14 * s)));
+    waveform1Box.setBounds (oscArea.removeFromTop ((int)(22 * s)).reduced ((int)(10 * s), (int)(2 * s)));
+    waveform2Label.setBounds (oscArea.removeFromTop ((int)(14 * s)));
+    waveform2Box.setBounds (oscArea.removeFromTop ((int)(22 * s)).reduced ((int)(10 * s), (int)(2 * s)));
+    oscArea.removeFromTop ((int)(4 * s));
+    osc2LevelLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); osc2LevelSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
+    osc2DetuneLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); osc2DetuneSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
+    subLevelLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); subLevelSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
+    noiseLevelLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); noiseLevelSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
+    unisonSpreadLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); unisonSpreadSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
 
     // FILTER
-    auto filterArea = synthArea.removeFromLeft (180);
-    sectionFilter.setBounds (filterArea.removeFromTop (22));
-    filterTypeLabel.setBounds (filterArea.removeFromTop (14));
-    filterTypeBox.setBounds (filterArea.removeFromTop (22).reduced (10, 2));
-    filterArea.removeFromTop (8);
-    filterCutoffLabel.setBounds (filterArea.removeFromTop (12)); filterCutoffSlider.setBounds (filterArea.removeFromTop (50));
-    filterResonanceLabel.setBounds (filterArea.removeFromTop (12)); filterResonanceSlider.setBounds (filterArea.removeFromTop (50));
-    filterDriveLabel.setBounds (filterArea.removeFromTop (12)); filterDriveSlider.setBounds (filterArea.removeFromTop (50));
-    filterKeyTrackLabel.setBounds (filterArea.removeFromTop (12)); filterKeyTrackSlider.setBounds (filterArea.removeFromTop (50));
+    auto filterArea = synthArea.removeFromLeft ((int)(180 * s));
+    sectionFilter.setBounds (filterArea.removeFromTop ((int)(22 * s)));
+    filterTypeLabel.setBounds (filterArea.removeFromTop ((int)(14 * s)));
+    filterTypeBox.setBounds (filterArea.removeFromTop ((int)(22 * s)).reduced ((int)(10 * s), (int)(2 * s)));
+    filterArea.removeFromTop ((int)(8 * s));
+    filterCutoffLabel.setBounds (filterArea.removeFromTop ((int)(12 * s))); filterCutoffSlider.setBounds (filterArea.removeFromTop ((int)(50 * s)));
+    filterResonanceLabel.setBounds (filterArea.removeFromTop ((int)(12 * s))); filterResonanceSlider.setBounds (filterArea.removeFromTop ((int)(50 * s)));
+    filterDriveLabel.setBounds (filterArea.removeFromTop ((int)(12 * s))); filterDriveSlider.setBounds (filterArea.removeFromTop ((int)(50 * s)));
+    filterKeyTrackLabel.setBounds (filterArea.removeFromTop ((int)(12 * s))); filterKeyTrackSlider.setBounds (filterArea.removeFromTop ((int)(50 * s)));
 
     // ENV
-    auto envArea = synthArea.removeFromLeft (280);
-    sectionEnv.setBounds (envArea.removeFromTop (22));
-    auto ampLabelArea = envArea.removeFromTop (14);
-    attackLabel.setBounds (ampLabelArea.removeFromLeft (70));
-    decayLabel.setBounds (ampLabelArea.removeFromLeft (70));
-    sustainLabel.setBounds (ampLabelArea.removeFromLeft (70));
-    releaseLabel.setBounds (ampLabelArea.removeFromLeft (70));
-    auto ampSliderArea = envArea.removeFromTop (70);
-    attackSlider.setBounds (ampSliderArea.removeFromLeft (70));
-    decaySlider.setBounds (ampSliderArea.removeFromLeft (70));
-    sustainSlider.setBounds (ampSliderArea.removeFromLeft (70));
-    releaseSlider.setBounds (ampSliderArea.removeFromLeft (70));
-    envArea.removeFromTop (6);
-    auto fltLabelArea = envArea.removeFromTop (14);
-    filterAttackLabel.setBounds (fltLabelArea.removeFromLeft (56));
-    filterDecayLabel.setBounds (fltLabelArea.removeFromLeft (56));
-    filterSustainLabel.setBounds (fltLabelArea.removeFromLeft (56));
-    filterReleaseLabel.setBounds (fltLabelArea.removeFromLeft (56));
-    filterEnvAmountLabel.setBounds (fltLabelArea.removeFromLeft (56));
-    auto fltSliderArea = envArea.removeFromTop (70);
-    filterAttackSlider.setBounds (fltSliderArea.removeFromLeft (56));
-    filterDecaySlider.setBounds (fltSliderArea.removeFromLeft (56));
-    filterSustainSlider.setBounds (fltSliderArea.removeFromLeft (56));
-    filterReleaseSlider.setBounds (fltSliderArea.removeFromLeft (56));
-    filterEnvAmountSlider.setBounds (fltSliderArea.removeFromLeft (56));
+    auto envArea = synthArea.removeFromLeft ((int)(280 * s));
+    sectionEnv.setBounds (envArea.removeFromTop ((int)(22 * s)));
+    auto ampLabelArea = envArea.removeFromTop ((int)(14 * s));
+    attackLabel.setBounds (ampLabelArea.removeFromLeft ((int)(70 * s)));
+    decayLabel.setBounds (ampLabelArea.removeFromLeft ((int)(70 * s)));
+    sustainLabel.setBounds (ampLabelArea.removeFromLeft ((int)(70 * s)));
+    releaseLabel.setBounds (ampLabelArea.removeFromLeft ((int)(70 * s)));
+    auto ampSliderArea = envArea.removeFromTop ((int)(70 * s));
+    attackSlider.setBounds (ampSliderArea.removeFromLeft ((int)(70 * s)));
+    decaySlider.setBounds (ampSliderArea.removeFromLeft ((int)(70 * s)));
+    sustainSlider.setBounds (ampSliderArea.removeFromLeft ((int)(70 * s)));
+    releaseSlider.setBounds (ampSliderArea.removeFromLeft ((int)(70 * s)));
+    envArea.removeFromTop ((int)(6 * s));
+    auto fltLabelArea = envArea.removeFromTop ((int)(14 * s));
+    filterAttackLabel.setBounds (fltLabelArea.removeFromLeft ((int)(56 * s)));
+    filterDecayLabel.setBounds (fltLabelArea.removeFromLeft ((int)(56 * s)));
+    filterSustainLabel.setBounds (fltLabelArea.removeFromLeft ((int)(56 * s)));
+    filterReleaseLabel.setBounds (fltLabelArea.removeFromLeft ((int)(56 * s)));
+    filterEnvAmountLabel.setBounds (fltLabelArea.removeFromLeft ((int)(56 * s)));
+    auto fltSliderArea = envArea.removeFromTop ((int)(70 * s));
+    filterAttackSlider.setBounds (fltSliderArea.removeFromLeft ((int)(56 * s)));
+    filterDecaySlider.setBounds (fltSliderArea.removeFromLeft ((int)(56 * s)));
+    filterSustainSlider.setBounds (fltSliderArea.removeFromLeft ((int)(56 * s)));
+    filterReleaseSlider.setBounds (fltSliderArea.removeFromLeft ((int)(56 * s)));
+    filterEnvAmountSlider.setBounds (fltSliderArea.removeFromLeft ((int)(56 * s)));
 
     // LFO
-    auto lfoArea = synthArea.removeFromLeft (140);
-    sectionLfo.setBounds (lfoArea.removeFromTop (22));
-    lfoWaveformLabel.setBounds (lfoArea.removeFromTop (14));
-    lfoWaveformBox.setBounds (lfoArea.removeFromTop (22).reduced (10, 2));
-    lfoArea.removeFromTop (8);
-    lfoRateLabel.setBounds (lfoArea.removeFromTop (12)); lfoRateSlider.setBounds (lfoArea.removeFromTop (50));
-    lfoDepthLabel.setBounds (lfoArea.removeFromTop (12)); lfoDepthSlider.setBounds (lfoArea.removeFromTop (50));
+    auto lfoArea = synthArea.removeFromLeft ((int)(140 * s));
+    sectionLfo.setBounds (lfoArea.removeFromTop ((int)(22 * s)));
+    lfoWaveformLabel.setBounds (lfoArea.removeFromTop ((int)(14 * s)));
+    lfoWaveformBox.setBounds (lfoArea.removeFromTop ((int)(22 * s)).reduced ((int)(10 * s), (int)(2 * s)));
+    lfoArea.removeFromTop ((int)(8 * s));
+    lfoRateLabel.setBounds (lfoArea.removeFromTop ((int)(12 * s))); lfoRateSlider.setBounds (lfoArea.removeFromTop ((int)(50 * s)));
+    lfoDepthLabel.setBounds (lfoArea.removeFromTop ((int)(12 * s))); lfoDepthSlider.setBounds (lfoArea.removeFromTop ((int)(50 * s)));
 
     // MOD
-    auto modArea = synthArea.removeFromLeft (160);
-    sectionMod.setBounds (modArea.removeFromTop (22));
-    modLfoToPitchLabel.setBounds (modArea.removeFromTop (12)); modLfoToPitchSlider.setBounds (modArea.removeFromTop (50));
-    modLfoToCutoffLabel.setBounds (modArea.removeFromTop (12)); modLfoToCutoffSlider.setBounds (modArea.removeFromTop (50));
-    modEnvToPitchLabel.setBounds (modArea.removeFromTop (12)); modEnvToPitchSlider.setBounds (modArea.removeFromTop (50));
-    modVelToCutoffLabel.setBounds (modArea.removeFromTop (12)); modVelToCutoffSlider.setBounds (modArea.removeFromTop (50));
+    auto modArea = synthArea.removeFromLeft ((int)(160 * s));
+    sectionMod.setBounds (modArea.removeFromTop ((int)(22 * s)));
+    modLfoToPitchLabel.setBounds (modArea.removeFromTop ((int)(12 * s))); modLfoToPitchSlider.setBounds (modArea.removeFromTop ((int)(50 * s)));
+    modLfoToCutoffLabel.setBounds (modArea.removeFromTop ((int)(12 * s))); modLfoToCutoffSlider.setBounds (modArea.removeFromTop ((int)(50 * s)));
+    modEnvToPitchLabel.setBounds (modArea.removeFromTop ((int)(12 * s))); modEnvToPitchSlider.setBounds (modArea.removeFromTop ((int)(50 * s)));
+    modVelToCutoffLabel.setBounds (modArea.removeFromTop ((int)(12 * s))); modVelToCutoffSlider.setBounds (modArea.removeFromTop ((int)(50 * s)));
 
     // PATCH
     auto patchArea = synthArea;
-    sectionPatch.setBounds (patchArea.removeFromTop (22));
-    patch1SrcLabel.setBounds (patchArea.removeFromTop (12)); patch1SrcBox.setBounds (patchArea.removeFromTop (22).reduced (5, 0));
-    patch1DstLabel.setBounds (patchArea.removeFromTop (12)); patch1DstBox.setBounds (patchArea.removeFromTop (22).reduced (5, 0));
-    patch1AmtLabel.setBounds (patchArea.removeFromTop (12)); patch1AmtSlider.setBounds (patchArea.removeFromTop (46).reduced (5, 0));
-    patch2SrcLabel.setBounds (patchArea.removeFromTop (12)); patch2SrcBox.setBounds (patchArea.removeFromTop (22).reduced (5, 0));
-    patch2DstLabel.setBounds (patchArea.removeFromTop (12)); patch2DstBox.setBounds (patchArea.removeFromTop (22).reduced (5, 0));
-    patch2AmtLabel.setBounds (patchArea.removeFromTop (12)); patch2AmtSlider.setBounds (patchArea.removeFromTop (46).reduced (5, 0));
-    patch3SrcLabel.setBounds (patchArea.removeFromTop (12)); patch3SrcBox.setBounds (patchArea.removeFromTop (22).reduced (5, 0));
-    patch3DstLabel.setBounds (patchArea.removeFromTop (12)); patch3DstBox.setBounds (patchArea.removeFromTop (22).reduced (5, 0));
-    patch3AmtLabel.setBounds (patchArea.removeFromTop (12)); patch3AmtSlider.setBounds (patchArea.removeFromTop (46).reduced (5, 0));
-    patch4SrcLabel.setBounds (patchArea.removeFromTop (12)); patch4SrcBox.setBounds (patchArea.removeFromTop (22).reduced (5, 0));
-    patch4DstLabel.setBounds (patchArea.removeFromTop (12)); patch4DstBox.setBounds (patchArea.removeFromTop (22).reduced (5, 0));
-    patch4AmtLabel.setBounds (patchArea.removeFromTop (12)); patch4AmtSlider.setBounds (patchArea.removeFromTop (46).reduced (5, 0));
+    sectionPatch.setBounds (patchArea.removeFromTop ((int)(22 * s)));
+    patch1SrcLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch1SrcBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
+    patch1DstLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch1DstBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
+    patch1AmtLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch1AmtSlider.setBounds (patchArea.removeFromTop ((int)(46 * s)).reduced ((int)(5 * s), 0));
+    patch2SrcLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch2SrcBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
+    patch2DstLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch2DstBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
+    patch2AmtLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch2AmtSlider.setBounds (patchArea.removeFromTop ((int)(46 * s)).reduced ((int)(5 * s), 0));
+    patch3SrcLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch3SrcBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
+    patch3DstLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch3DstBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
+    patch3AmtLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch3AmtSlider.setBounds (patchArea.removeFromTop ((int)(46 * s)).reduced ((int)(5 * s), 0));
+    patch4SrcLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch4SrcBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
+    patch4DstLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch4DstBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
+    patch4AmtLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch4AmtSlider.setBounds (patchArea.removeFromTop ((int)(46 * s)).reduced ((int)(5 * s), 0));
 
-    // === DRUM MACHINE ===
-    sectionDrum.setBounds (drumArea.removeFromTop (22));
-    drumVolLabel.setBounds (drumArea.removeFromLeft (80).removeFromTop (12));
-    drumVolSlider.setBounds (drumArea.removeFromLeft (80).removeFromTop (60));
-    drumDriveLabel.setBounds (drumArea.removeFromLeft (80).removeFromTop (12));
-    drumDriveSlider.setBounds (drumArea.removeFromLeft (80).removeFromTop (60));
-    drumArea.removeFromLeft (10);
+    // DRUM MACHINE
+    sectionDrum.setBounds (drumArea.removeFromTop ((int)(22 * s)));
+    drumVolLabel.setBounds (drumArea.removeFromLeft ((int)(80 * s)).removeFromTop ((int)(12 * s)));
+    drumVolSlider.setBounds (drumArea.removeFromLeft ((int)(80 * s)).removeFromTop ((int)(60 * s)));
+    drumDriveLabel.setBounds (drumArea.removeFromLeft ((int)(80 * s)).removeFromTop ((int)(12 * s)));
+    drumDriveSlider.setBounds (drumArea.removeFromLeft ((int)(80 * s)).removeFromTop ((int)(60 * s)));
+    drumArea.removeFromLeft ((int)(10 * s));
 
-    auto drumRow1 = drumArea.removeFromTop (85);
-    kickLvlLabel.setBounds (drumRow1.removeFromLeft (12)); kickLvlSlider.setBounds (drumRow1.removeFromLeft (70));
-    kickTuneLabel.setBounds (drumRow1.removeFromLeft (12)); kickTuneSlider.setBounds (drumRow1.removeFromLeft (70));
-    kickDecayLabel.setBounds (drumRow1.removeFromLeft (12)); kickDecaySlider.setBounds (drumRow1.removeFromLeft (70));
-    kickToneLabel.setBounds (drumRow1.removeFromLeft (12)); kickToneSlider.setBounds (drumRow1.removeFromLeft (70));
-    drumRow1.removeFromLeft (10);
-    snareLvlLabel.setBounds (drumRow1.removeFromLeft (12)); snareLvlSlider.setBounds (drumRow1.removeFromLeft (70));
-    snareTuneLabel.setBounds (drumRow1.removeFromLeft (12)); snareTuneSlider.setBounds (drumRow1.removeFromLeft (70));
-    snareDecayLabel.setBounds (drumRow1.removeFromLeft (12)); snareDecaySlider.setBounds (drumRow1.removeFromLeft (70));
-    snareToneLabel.setBounds (drumRow1.removeFromLeft (12)); snareToneSlider.setBounds (drumRow1.removeFromLeft (70));
-    drumRow1.removeFromLeft (10);
-    hatLvlLabel.setBounds (drumRow1.removeFromLeft (12)); hatLvlSlider.setBounds (drumRow1.removeFromLeft (70));
-    hatTuneLabel.setBounds (drumRow1.removeFromLeft (12)); hatTuneSlider.setBounds (drumRow1.removeFromLeft (70));
-    hatDecayLabel.setBounds (drumRow1.removeFromLeft (12)); hatDecaySlider.setBounds (drumRow1.removeFromLeft (70));
-    hatToneLabel.setBounds (drumRow1.removeFromLeft (12)); hatToneSlider.setBounds (drumRow1.removeFromLeft (70));
+    auto drumRow1 = drumArea.removeFromTop ((int)(85 * s));
+    kickLvlLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); kickLvlSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    kickTuneLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); kickTuneSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    kickDecayLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); kickDecaySlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    kickToneLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); kickToneSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    drumRow1.removeFromLeft ((int)(10 * s));
+    snareLvlLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); snareLvlSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    snareTuneLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); snareTuneSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    snareDecayLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); snareDecaySlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    snareToneLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); snareToneSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    drumRow1.removeFromLeft ((int)(10 * s));
+    hatLvlLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); hatLvlSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    hatTuneLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); hatTuneSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    hatDecayLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); hatDecaySlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
+    hatToneLabel.setBounds (drumRow1.removeFromLeft ((int)(12 * s))); hatToneSlider.setBounds (drumRow1.removeFromLeft ((int)(70 * s)));
 
-    drumArea.removeFromTop (6);
-    auto drumRow2 = drumArea.removeFromTop (85);
-    clapLvlLabel.setBounds (drumRow2.removeFromLeft (12)); clapLvlSlider.setBounds (drumRow2.removeFromLeft (70));
-    clapTuneLabel.setBounds (drumRow2.removeFromLeft (12)); clapTuneSlider.setBounds (drumRow2.removeFromLeft (70));
-    clapDecayLabel.setBounds (drumRow2.removeFromLeft (12)); clapDecaySlider.setBounds (drumRow2.removeFromLeft (70));
-    clapToneLabel.setBounds (drumRow2.removeFromLeft (12)); clapToneSlider.setBounds (drumRow2.removeFromLeft (70));
-    drumRow2.removeFromLeft (10);
-    tomLvlLabel.setBounds (drumRow2.removeFromLeft (12)); tomLvlSlider.setBounds (drumRow2.removeFromLeft (70));
-    tomTuneLabel.setBounds (drumRow2.removeFromLeft (12)); tomTuneSlider.setBounds (drumRow2.removeFromLeft (70));
-    tomDecayLabel.setBounds (drumRow2.removeFromLeft (12)); tomDecaySlider.setBounds (drumRow2.removeFromLeft (70));
-    tomToneLabel.setBounds (drumRow2.removeFromLeft (12)); tomToneSlider.setBounds (drumRow2.removeFromLeft (70));
-    drumRow2.removeFromLeft (10);
-    percLvlLabel.setBounds (drumRow2.removeFromLeft (12)); percLvlSlider.setBounds (drumRow2.removeFromLeft (70));
-    percTuneLabel.setBounds (drumRow2.removeFromLeft (12)); percTuneSlider.setBounds (drumRow2.removeFromLeft (70));
-    percDecayLabel.setBounds (drumRow2.removeFromLeft (12)); percDecaySlider.setBounds (drumRow2.removeFromLeft (70));
-    percToneLabel.setBounds (drumRow2.removeFromLeft (12)); percToneSlider.setBounds (drumRow2.removeFromLeft (70));
+    drumArea.removeFromTop ((int)(6 * s));
+    auto drumRow2 = drumArea.removeFromTop ((int)(85 * s));
+    clapLvlLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); clapLvlSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    clapTuneLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); clapTuneSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    clapDecayLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); clapDecaySlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    clapToneLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); clapToneSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    drumRow2.removeFromLeft ((int)(10 * s));
+    tomLvlLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); tomLvlSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    tomTuneLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); tomTuneSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    tomDecayLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); tomDecaySlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    tomToneLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); tomToneSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    drumRow2.removeFromLeft ((int)(10 * s));
+    percLvlLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); percLvlSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    percTuneLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); percTuneSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    percDecayLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); percDecaySlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
+    percToneLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); percToneSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
 
     // FX
-    sectionFx.setBounds (fxArea.removeFromTop (22));
-    auto distArea = fxArea.removeFromLeft (120);
-    distDriveLabel.setBounds (distArea.removeFromTop (12)); distDriveSlider.setBounds (distArea.removeFromTop (60));
-    distMixLabel.setBounds (distArea.removeFromTop (12)); distMixSlider.setBounds (distArea.removeFromTop (60));
-    auto chorusArea = fxArea.removeFromLeft (180);
-    chorusRateLabel.setBounds (chorusArea.removeFromTop (12)); chorusRateSlider.setBounds (chorusArea.removeFromTop (60));
-    chorusDepthLabel.setBounds (chorusArea.removeFromTop (12)); chorusDepthSlider.setBounds (chorusArea.removeFromTop (60));
-    chorusMixLabel.setBounds (chorusArea.removeFromTop (12)); chorusMixSlider.setBounds (chorusArea.removeFromTop (60));
-    auto delayArea = fxArea.removeFromLeft (180);
-    delayTimeLabel.setBounds (delayArea.removeFromTop (12)); delayTimeSlider.setBounds (delayArea.removeFromTop (60));
-    delayFeedbackLabel.setBounds (delayArea.removeFromTop (12)); delayFeedbackSlider.setBounds (delayArea.removeFromTop (60));
-    delayMixLabel.setBounds (delayArea.removeFromTop (12)); delayMixSlider.setBounds (delayArea.removeFromTop (60));
-    auto reverbArea = fxArea.removeFromLeft (120);
-    reverbDecayLabel.setBounds (reverbArea.removeFromTop (12)); reverbDecaySlider.setBounds (reverbArea.removeFromTop (60));
-    reverbMixLabel.setBounds (reverbArea.removeFromTop (12)); reverbMixSlider.setBounds (reverbArea.removeFromTop (60));
-    fxBypassButton.setBounds (fxArea.reduced (30, 40));
+    sectionFx.setBounds (fxArea.removeFromTop ((int)(22 * s)));
+    auto distArea = fxArea.removeFromLeft ((int)(120 * s));
+    distDriveLabel.setBounds (distArea.removeFromTop ((int)(12 * s))); distDriveSlider.setBounds (distArea.removeFromTop ((int)(60 * s)));
+    distMixLabel.setBounds (distArea.removeFromTop ((int)(12 * s))); distMixSlider.setBounds (distArea.removeFromTop ((int)(60 * s)));
+    auto chorusArea = fxArea.removeFromLeft ((int)(180 * s));
+    chorusRateLabel.setBounds (chorusArea.removeFromTop ((int)(12 * s))); chorusRateSlider.setBounds (chorusArea.removeFromTop ((int)(60 * s)));
+    chorusDepthLabel.setBounds (chorusArea.removeFromTop ((int)(12 * s))); chorusDepthSlider.setBounds (chorusArea.removeFromTop ((int)(60 * s)));
+    chorusMixLabel.setBounds (chorusArea.removeFromTop ((int)(12 * s))); chorusMixSlider.setBounds (chorusArea.removeFromTop ((int)(60 * s)));
+    auto delayArea = fxArea.removeFromLeft ((int)(180 * s));
+    delayTimeLabel.setBounds (delayArea.removeFromTop ((int)(12 * s))); delayTimeSlider.setBounds (delayArea.removeFromTop ((int)(60 * s)));
+    delayFeedbackLabel.setBounds (delayArea.removeFromTop ((int)(12 * s))); delayFeedbackSlider.setBounds (delayArea.removeFromTop ((int)(60 * s)));
+    delayMixLabel.setBounds (delayArea.removeFromTop ((int)(12 * s))); delayMixSlider.setBounds (delayArea.removeFromTop ((int)(60 * s)));
+    auto reverbArea = fxArea.removeFromLeft ((int)(120 * s));
+    reverbDecayLabel.setBounds (reverbArea.removeFromTop ((int)(12 * s))); reverbDecaySlider.setBounds (reverbArea.removeFromTop ((int)(60 * s)));
+    reverbMixLabel.setBounds (reverbArea.removeFromTop ((int)(12 * s))); reverbMixSlider.setBounds (reverbArea.removeFromTop ((int)(60 * s)));
+    fxBypassButton.setBounds (fxArea.reduced ((int)(30 * s), (int)(40 * s)));
 
-    // MASTER
-    sectionMaster.setBounds (bottomArea.removeFromTop (22));
-    macroMorphLabel.setBounds (bottomArea.removeFromTop (12)); macroMorphSlider.setBounds (bottomArea.removeFromTop (50));
-    analogDriftLabel.setBounds (bottomArea.removeFromTop (12)); analogDriftSlider.setBounds (bottomArea.removeFromTop (50));
-    masterDriveLabel.setBounds (bottomArea.removeFromTop (12)); masterDriveSlider.setBounds (bottomArea.removeFromTop (50));
-    volumeLabel.setBounds (bottomArea.removeFromTop (12)); volumeSlider.setBounds (bottomArea.removeFromTop (50));
+    // MASTER + SCALE SELECTOR
+    sectionMaster.setBounds (bottomArea.removeFromTop ((int)(22 * s)));
+    
+    // Scale selector в правом верхнем углу мастер-секции
+    auto masterTop = bottomArea.removeFromTop ((int)(12 * s));
+    scaleLabel.setBounds (masterTop.removeFromRight ((int)(100 * s)));
+    scaleBox.setBounds (masterTop.removeFromRight ((int)(80 * s)));
+    
+    macroMorphLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); macroMorphSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
+    analogDriftLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); analogDriftSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
+    masterDriveLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); masterDriveSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
+    volumeLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); volumeSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
 }
