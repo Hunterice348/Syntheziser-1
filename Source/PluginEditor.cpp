@@ -4,7 +4,7 @@
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
-    setSize (1050, 480);
+    setSize (1100, 500);
 
     auto setupSlider = [](juce::Slider& s) {
         s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -39,21 +39,45 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSlider (lfoRateSlider); addAndMakeVisible (lfoRateSlider);
     setupSlider (lfoDepthSlider); addAndMakeVisible (lfoDepthSlider);
 
-    // Modulation Matrix Sliders (Stage 9)
     setupSlider (modLfoToPitchSlider); addAndMakeVisible (modLfoToPitchSlider);
     setupSlider (modLfoToCutoffSlider); addAndMakeVisible (modLfoToCutoffSlider);
     setupSlider (modEnvToPitchSlider); addAndMakeVisible (modEnvToPitchSlider);
     setupSlider (modVelToCutoffSlider); addAndMakeVisible (modVelToCutoffSlider);
+
+    // Semi-Modular Patch Bay UI
+    setupSlider (patch1AmtSlider); addAndMakeVisible (patch1AmtSlider);
+    setupSlider (patch2AmtSlider); addAndMakeVisible (patch2AmtSlider);
+    setupSlider (patch3AmtSlider); addAndMakeVisible (patch3AmtSlider);
+    setupSlider (patch4AmtSlider); addAndMakeVisible (patch4AmtSlider);
+
+    auto setupCombo = [](juce::ComboBox& c) {
+        c.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xFF2A2A32));
+        c.setColour (juce::ComboBox::textColourId, juce::Colours::white);
+    };
+    setupCombo (patch1SrcBox); addAndMakeVisible (patch1SrcBox);
+    setupCombo (patch1DstBox); addAndMakeVisible (patch1DstBox);
+    setupCombo (patch2SrcBox); addAndMakeVisible (patch2SrcBox);
+    setupCombo (patch2DstBox); addAndMakeVisible (patch2DstBox);
+    setupCombo (patch3SrcBox); addAndMakeVisible (patch3SrcBox);
+    setupCombo (patch3DstBox); addAndMakeVisible (patch3DstBox);
+    setupCombo (patch4SrcBox); addAndMakeVisible (patch4SrcBox);
+    setupCombo (patch4DstBox); addAndMakeVisible (patch4DstBox);
 
     waveform1Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     waveform2Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     filterTypeBox.addItemList ({ "LP 12dB", "LP 24dB", "High Pass", "Band Pass" }, 1);
     lfoWaveformBox.addItemList ({ "Sine", "Triangle", "Saw", "Square", "S&H" }, 1);
     
-    addAndMakeVisible (waveform1Box);
-    addAndMakeVisible (waveform2Box);
-    addAndMakeVisible (filterTypeBox);
-    addAndMakeVisible (lfoWaveformBox);
+    auto srcList = juce::StringArray { "None", "LFO", "Filter Env", "Velocity", "Mod Wheel", "Osc 1 (Audio)", "Noise (Audio)" };
+    auto dstList = juce::StringArray { "None", "Filter Cutoff", "Osc 1 Pitch", "Osc 2 Pitch", "Master Vol", "Filter Res" };
+    
+    patch1SrcBox.addItemList (srcList, 1); patch1DstBox.addItemList (dstList, 1);
+    patch2SrcBox.addItemList (srcList, 1); patch2DstBox.addItemList (dstList, 1);
+    patch3SrcBox.addItemList (srcList, 1); patch3DstBox.addItemList (dstList, 1);
+    patch4SrcBox.addItemList (srcList, 1); patch4DstBox.addItemList (dstList, 1);
+
+    addAndMakeVisible (waveform1Box); addAndMakeVisible (waveform2Box);
+    addAndMakeVisible (filterTypeBox); addAndMakeVisible (lfoWaveformBox);
 
     attackAtt = std::make_unique<Attachment> (parameters, "attack", attackSlider);
     decayAtt = std::make_unique<Attachment> (parameters, "decay", decaySlider);
@@ -88,6 +112,22 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     modEnvToPitchAtt = std::make_unique<Attachment> (parameters, "modEnvToPitch", modEnvToPitchSlider);
     modVelToCutoffAtt = std::make_unique<Attachment> (parameters, "modVelToCutoff", modVelToCutoffSlider);
     
+    patch1SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch0Src", patch1SrcBox);
+    patch1DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch0Dst", patch1DstBox);
+    patch1AmtAtt = std::make_unique<Attachment> (parameters, "patch0Amt", patch1AmtSlider);
+    
+    patch2SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch1Src", patch2SrcBox);
+    patch2DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch1Dst", patch2DstBox);
+    patch2AmtAtt = std::make_unique<Attachment> (parameters, "patch1Amt", patch2AmtSlider);
+    
+    patch3SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch2Src", patch3SrcBox);
+    patch3DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch2Dst", patch3DstBox);
+    patch3AmtAtt = std::make_unique<Attachment> (parameters, "patch2Amt", patch3AmtSlider);
+    
+    patch4SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch3Src", patch4SrcBox);
+    patch4DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch3Dst", patch4DstBox);
+    patch4AmtAtt = std::make_unique<Attachment> (parameters, "patch3Amt", patch4AmtSlider);
+    
     wf1Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform1", waveform1Box);
     wf2Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform2", waveform2Box);
     filterTypeAtt = std::make_unique<ComboBoxAttachment> (parameters, "filterType", filterTypeBox);
@@ -110,7 +150,7 @@ void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
 
 void HuntericeAbyssAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced (20).removeFromTop (320);
+    auto area = getLocalBounds().reduced (20).removeFromTop (340);
     
     auto oscArea = area.removeFromLeft (160);
     waveform1Box.setBounds (oscArea.removeFromTop (30).reduced (10));
@@ -134,20 +174,40 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     filterEnvAmountSlider.setBounds (modArea.removeFromLeft (40));
     filterAttackSlider.setBounds (modArea.removeFromLeft (40));
     
-    // MODULATION MATRIX SECTION (Stage 9)
     auto matrixArea = area.removeFromLeft (160);
-    matrixArea.removeFromTop (10); // Spacer
+    matrixArea.removeFromTop (10);
     modLfoToPitchSlider.setBounds (matrixArea.removeFromLeft (40));
     modLfoToCutoffSlider.setBounds (matrixArea.removeFromLeft (40));
     modEnvToPitchSlider.setBounds (matrixArea.removeFromLeft (40));
     modVelToCutoffSlider.setBounds (matrixArea.removeFromLeft (40));
+    
+    // SEMI-MODULAR PATCH BAY (Stage 10)
+    auto patchArea = area.removeFromLeft (240);
+    patchArea.removeFromTop (10);
+    
+    auto rowH = 60;
+    patch1SrcBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
+    patch1DstBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
+    patch1AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (5, 0));
+    
+    patch2SrcBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
+    patch2DstBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
+    patch2AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (5, 0));
+    
+    patch3SrcBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
+    patch3DstBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
+    patch3AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (5, 0));
+    
+    patch4SrcBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
+    patch4DstBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
+    patch4AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (5, 0));
     
     auto envArea = area.removeFromLeft (200);
     attackSlider.setBounds (envArea.removeFromLeft (50));
     decaySlider.setBounds (envArea.removeFromLeft (50));
     sustainSlider.setBounds (envArea.removeFromLeft (50));
     releaseSlider.setBounds (envArea.removeFromLeft (50));
-    filterDecaySlider.setBounds (envArea.removeFromLeft (50)); // Compact layout
+    filterDecaySlider.setBounds (envArea.removeFromLeft (50));
     
     auto masterArea = area.removeFromLeft (120);
     analogDriftSlider.setBounds (masterArea.removeFromLeft (40));
