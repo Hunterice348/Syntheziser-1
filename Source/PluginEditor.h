@@ -15,7 +15,6 @@ private:
     HuntericeAbyssAudioProcessor& audioProcessor;
     juce::AudioProcessorValueTreeState& parameters;
 
-    // --- СЛАЙДЕРЫ ---
     juce::Slider attackSlider, decaySlider, sustainSlider, releaseSlider, volumeSlider;
     juce::Slider osc2LevelSlider, osc2DetuneSlider, subLevelSlider, noiseLevelSlider;
     juce::Slider analogDriftSlider, masterDriveSlider;
@@ -40,9 +39,18 @@ private:
 
     juce::ComboBox waveform1Box, waveform2Box, filterTypeBox, lfoWaveformBox;
 
-    // --- LABEL'Ы ДЛЯ ПОДПИСЕЙ (Stage 13.1) ---
+    // DRUM MACHINE (Stage 14)
+    juce::Slider drumVolSlider, drumDriveSlider;
+    juce::Slider kickLvlSlider, kickTuneSlider, kickDecaySlider, kickToneSlider;
+    juce::Slider snareLvlSlider, snareTuneSlider, snareDecaySlider, snareToneSlider;
+    juce::Slider hatLvlSlider, hatTuneSlider, hatDecaySlider, hatToneSlider;
+    juce::Slider clapLvlSlider, clapTuneSlider, clapDecaySlider, clapToneSlider;
+    juce::Slider tomLvlSlider, tomTuneSlider, tomDecaySlider, tomToneSlider;
+    juce::Slider percLvlSlider, percTuneSlider, percDecaySlider, percToneSlider;
+
+    // LABELS
     juce::Label sectionOsc, sectionFilter, sectionEnv, sectionLfo;
-    juce::Label sectionMod, sectionPatch, sectionFx, sectionMaster;
+    juce::Label sectionMod, sectionPatch, sectionFx, sectionMaster, sectionDrum;
     
     juce::Label attackLabel, decayLabel, sustainLabel, releaseLabel, volumeLabel;
     juce::Label osc2LevelLabel, osc2DetuneLabel, subLevelLabel, noiseLevelLabel;
@@ -57,12 +65,19 @@ private:
     juce::Label delayTimeLabel, delayFeedbackLabel, delayMixLabel;
     juce::Label reverbDecayLabel, reverbMixLabel;
     juce::Label unisonSpreadLabel, macroMorphLabel;
-    
     juce::Label waveform1Label, waveform2Label, filterTypeLabel, lfoWaveformLabel;
     juce::Label patch1SrcLabel, patch1DstLabel;
     juce::Label patch2SrcLabel, patch2DstLabel;
     juce::Label patch3SrcLabel, patch3DstLabel;
     juce::Label patch4SrcLabel, patch4DstLabel;
+    
+    juce::Label drumVolLabel, drumDriveLabel;
+    juce::Label kickLvlLabel, kickTuneLabel, kickDecayLabel, kickToneLabel;
+    juce::Label snareLvlLabel, snareTuneLabel, snareDecayLabel, snareToneLabel;
+    juce::Label hatLvlLabel, hatTuneLabel, hatDecayLabel, hatToneLabel;
+    juce::Label clapLvlLabel, clapTuneLabel, clapDecayLabel, clapToneLabel;
+    juce::Label tomLvlLabel, tomTuneLabel, tomDecayLabel, tomToneLabel;
+    juce::Label percLvlLabel, percTuneLabel, percDecayLabel, percToneLabel;
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
@@ -91,6 +106,15 @@ private:
     std::unique_ptr<Attachment> macroMorphAtt;
 
     std::unique_ptr<ComboBoxAttachment> wf1Att, wf2Att, filterTypeAtt, lfoWaveformAtt;
+
+    // DRUM ATTACHMENTS
+    std::unique_ptr<Attachment> drumVolAtt, drumDriveAtt;
+    std::unique_ptr<Attachment> kickLvlAtt, kickTuneAtt, kickDecayAtt, kickToneAtt;
+    std::unique_ptr<Attachment> snareLvlAtt, snareTuneAtt, snareDecayAtt, snareToneAtt;
+    std::unique_ptr<Attachment> hatLvlAtt, hatTuneAtt, hatDecayAtt, hatToneAtt;
+    std::unique_ptr<Attachment> clapLvlAtt, clapTuneAtt, clapDecayAtt, clapToneAtt;
+    std::unique_ptr<Attachment> tomLvlAtt, tomTuneAtt, tomDecayAtt, tomToneAtt;
+    std::unique_ptr<Attachment> percLvlAtt, percTuneAtt, percDecayAtt, percToneAtt;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HuntericeAbyssAudioProcessorEditor)
 };
