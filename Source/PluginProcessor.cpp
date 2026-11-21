@@ -80,11 +80,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("filterType",  "Filter Type",    ftypes, 0));
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("lfoWaveform", "LFO Waveform",   lwaves, 0));
 
-    // === ЮНИСОН + PWM ===
     p.push_back (std::make_unique<juce::AudioParameterInt> ("unisonVoices", "Unison Voices", 1, 8, 1));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("pwmWidth", "PWM Width", 0.1f, 0.9f, 0.5f));
 
-    // === НОВЫЕ ПАРАМЕТРЫ ===
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("glide",        "Glide",      0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("velToAmp",     "Vel -> Amp", 0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("kickBody",     "KICK BODY",  0.0f, 1.0f, 0.5f));
@@ -92,7 +90,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("snareSnap",    "SNARE SNAP", 0.0f, 1.0f, 0.0f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("snareBody",    "SNARE BODY", 0.0f, 1.0f, 0.5f));
 
-    // DRUM MACHINE
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumVol",   "DRUM VOL", 0.0f, 1.0f, 0.8f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumDrive", "DRUM DRV", 0.0f, 1.0f, 0.0f));
 
@@ -189,7 +186,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const int unisonVoices = juce::jlimit (1, MAX_UNISON, (int) parameters.getRawParameterValue ("unisonVoices")->load());
     const float pwmWidth = parameters.getRawParameterValue ("pwmWidth")->load();
     
-    // === НОВЫЕ ПАРАМЕТРЫ ===
     const float glideAmt = parameters.getRawParameterValue ("glide")->load();
     const float velToAmt = parameters.getRawParameterValue ("velToAmp")->load();
     const double glideCoef = (glideAmt > 0.001f) ? std::exp (-1.0 / (sr * (0.005 + (double) glideAmt * 0.6))) : 0.0;
@@ -339,7 +335,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             if (! v.ampEnv.isActive()) { v.active = false; continue; }
             ++activeCount;
 
-            // === GLIDE И ЮНИСОН ===
             v.inc1   = v.targetInc1   + (v.inc1   - v.targetInc1)   * glideCoef;
             v.inc2   = v.targetInc2   + (v.inc2   - v.targetInc2)   * glideCoef;
             v.incSub = v.targetIncSub + (v.incSub - v.targetIncSub) * glideCoef;
@@ -363,7 +358,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
             float pitchMod  = (fe - 0.5f) * pv[ModEnvPitch] * 0.05f + lfo * pv[ModLfoPitch] * 0.05f;
             float cutoffMod = fe * pv[FilterEnvAmt] + lfo * pv[LfoDepth] + lfo * pv[ModLfoCutoff]
-                            + (v.velocity - 0.5f) * pv[ModVelToCutoff] * 0.5f + modWheel * 0.3f;
+                            + (v.velocity - 0.5f) * pv[ModVelCutoff] * 0.5f + modWheel * 0.3f;
             float resMod = 0.0f;
 
             for (int c = 0; c < NUM_PATCH; ++c)
@@ -391,7 +386,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 }
             }
 
-            // === НАСТОЯЩИЙ ЮНИСОН ===
             float osc1Sum = 0.0f;
             for (int j = 0; j < v.unisonCount; ++j)
             {
@@ -444,13 +438,11 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             sig = std::tanh (sig * (1.0f + fDrive * 3.0f)) / (1.0f + fDrive * 0.7f);
 
             const float filtered = v.filter.process (sig, g, k, fType);
-            // === VEL -> AMP ===
             const float s = filtered * env * (1.0f - velToAmt * (1.0f - v.velocity));
             mixL += s * v.panL;
             mixR += s * v.panR;
         }
 
-        // === DRUM MACHINE ===
         float drumL = 0.0f, drumR = 0.0f;
         for (int d = 0; d < NUM_DRUMS; ++d)
         {
@@ -486,7 +478,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         float outL = dryL, outR = dryR;
         if (! bypass)
         {
-            // === УЛУЧШЕННЫЙ DISTORTION ===
             const float dm = pv[DistMix];
             if (dm > 0.0001f)
             {
@@ -500,14 +491,12 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 outL += (dL - outL) * dm;
                 outR += (dR - outR) * dm;
             }
-            // === УЛУЧШЕННЫЙ CHORUS ===
             const float cm = pv[ChorusMix];
             if (cm > 0.0001f)
             {
                 outL = chorusL.process (outL, pv[ChorusRate], pv[ChorusDepth], cm, sr, 0.0f);
                 outR = chorusR.process (outR, pv[ChorusRate], pv[ChorusDepth], cm, sr, 0.25f);
             }
-            // === УЛУЧШЕННЫЙ DELAY ===
             const float dlm = pv[DelayMix];
             if (dlm > 0.0001f)
             {
@@ -515,7 +504,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 outL += delayL.process (outL, len, pv[DelayFeedback], 0.5f) * dlm;
                 outR += delayR.process (outR, len, pv[DelayFeedback], 0.5f) * dlm;
             }
-            // === УЛУЧШЕННЫЙ REVERB ===
             const float rm = pv[ReverbMix];
             if (rm > 0.0001f)
             {
