@@ -80,6 +80,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("filterType",  "Filter Type",    ftypes, 0));
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("lfoWaveform", "LFO Waveform",   lwaves, 0));
 
+    // === НАСТОЯЩИЙ ЮНИСОН + PWM ===
+    p.push_back (std::make_unique<juce::AudioParameterInt> ("unisonVoices", "Unison Voices", 1, 8, 1));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("pwmWidth", "PWM Width", 0.1f, 0.9f, 0.5f));
+
     // DRUM MACHINE
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumVol",   "DRUM VOL", 0.0f, 1.0f, 0.8f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumDrive", "DRUM DRV", 0.0f, 1.0f, 0.0f));
@@ -172,6 +176,10 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     lfoSH = (lw == 4);
     lfoWf = (Waveform) (lw == 1 ? 3 : (lw == 2 ? 1 : (lw == 3 ? 2 : 0)));
     const bool bypass = parameters.getRawParameterValue ("fxBypass")->load() > 0.5f;
+
+    // === НОВЫЕ ПАРАМЕТРЫ: ЮНИСОН + PWM ===
+    const int unisonVoices = juce::jlimit (1, MAX_UNISON, (int) parameters.getRawParameterValue ("unisonVoices")->load());
+    const float pwmWidth = parameters.getRawParameterValue ("pwmWidth")->load();
 
     juce::ADSR::Parameters ap, fp;
     ap.attack  = parameters.getRawParameterValue ("attack")->load();
@@ -311,6 +319,18 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             if (! v.ampEnv.isActive()) { v.active = false; continue; }
             ++activeCount;
 
+            // === ИНИЦИАЛИЗАЦИЯ ЮНИСОНА ===
+            if (v.unisonCount != unisonVoices)
+            {
+                v.unisonCount = unisonVoices;
+                for (int j = 0; j < unisonVoices; ++j)
+                {
+                    v.unisonPhase[j] = v.phase1;
+                    float spread = (unisonVoices > 1) ? (0.025f * (j - (unisonVoices - 1) * 0.5f)) : 0.0f;
+                    v.unisonDetune[j] = spread;
+                }
+            }
+
             float lfo;
             v.lfoInc = (double) pv[LfoRate] / sr;
             v.lfoPhase += v.lfoInc;
@@ -351,17 +371,28 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 }
             }
 
-            const float pf = (1.0f + pitchMod + v.audioPitchMod) * bendMul;
-            const float dt1 = (float) juce::jlimit (0.0, 0.45, v.inc1 * (double) pf);
-            const float dt2 = (float) juce::jlimit (0.0, 0.45, v.inc2 * (double) pf);
-            const float dtS = (float) juce::jlimit (0.0, 0.45, v.incSub * (double) pf);
+            // === НАСТОЯЩИЙ ЮНИСОН ===
+            float osc1Sum = 0.0f;
+            for (int j = 0; j < v.unisonCount; ++j)
+            {
+                float detuneFactor = 1.0f + v.unisonDetune[j] + (pitchMod + v.audioPitchMod) * 0.1f;
+                float dt = (float) juce::jlimit (0.0, 0.45, v.inc1 * (double) detuneFactor * (double) bendMul);
+                
+                osc1Sum += osc ((float)v.unisonPhase[j], dt, wf1, pwmWidth);
+                
+                v.unisonPhase[j] += dt;
+                if (v.unisonPhase[j] >= 1.0) v.unisonPhase[j] -= std::floor (v.unisonPhase[j]);
+            }
+            const float o1 = osc1Sum / (float) v.unisonCount;
+            v.phase1 = v.unisonPhase[0];
 
-            const float o1 = osc ((float) v.phase1, dt1, wf1);
-            const float o2 = (osc2Level > 0.0001f) ? osc ((float) v.phase2, dt2, wf2) : 0.0f;
+            const float dt2 = (float) juce::jlimit (0.0, 0.45, v.inc2 * (double) ((1.0f + pitchMod + v.audioPitchMod) * bendMul));
+            const float dtS = (float) juce::jlimit (0.0, 0.45, v.incSub * (double) ((1.0f + pitchMod + v.audioPitchMod) * bendMul));
+
+            const float o2 = (osc2Level > 0.0001f) ? osc ((float) v.phase2, dt2, wf2, pwmWidth) : 0.0f;
             const float sb = (subLevel  > 0.0001f) ? ((v.phaseSub < 0.5) ? 1.0f : -1.0f) : 0.0f;
             const float nz = (noiseMix  > 0.0001f) ? noise (v.noiseSeed) : 0.0f;
 
-            v.phase1 += dt1; if (v.phase1 >= 1.0) v.phase1 -= std::floor (v.phase1);
             v.phase2 += dt2; if (v.phase2 >= 1.0) v.phase2 -= std::floor (v.phase2);
             v.phaseSub += dtS; if (v.phaseSub >= 1.0) v.phaseSub -= std::floor (v.phaseSub);
 
@@ -397,7 +428,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             mixR += s * v.panR;
         }
 
-        // === DRUM MACHINE RENDER ===
+        // === DRUM MACHINE ===
         float drumL = 0.0f, drumR = 0.0f;
         for (int d = 0; d < NUM_DRUMS; ++d)
         {
@@ -405,7 +436,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             drumL += s * 0.7071f;
             drumR += s * 0.7071f;
         }
-        
         const float drumDriveVal = pv[DrumDrive];
         if (drumDriveVal > 0.0001f)
         {
