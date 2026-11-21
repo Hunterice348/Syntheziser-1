@@ -143,7 +143,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     buffer.clear();
     if (numCh == 0 || numSamples == 0) { midi.clear(); return; }
 
-    // --- параметры блочного уровня ---
     const float kt = parameters.getRawParameterValue ("filterKeyTrack")->load();
     wf1   = (Waveform)   juce::jlimit (0, 3, (int) parameters.getRawParameterValue ("waveform1")->load());
     wf2   = (Waveform)   juce::jlimit (0, 3, (int) parameters.getRawParameterValue ("waveform2")->load());
@@ -193,7 +192,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     for (int i = 0; i < numSamples; ++i)
     {
-        // --- сэмпл-точное MIDI ---
         while (hasNext && msgPos <= i)
         {
             if (msg.isController())
@@ -252,7 +250,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             hasNext = it.getNextEvent (msg, msgPos);
         }
 
-        // --- сглаженные значения ---
         float pv[NumSmooth];
         for (int k = 0; k < NumSmooth; ++k) pv[k] = sm[(size_t) k].next();
 
@@ -270,7 +267,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         float volMod = 0.0f;
         int activeCount = 0;
 
-        // --- ГОЛОСА (один раз на сэмпл, не на канал!) ---
         for (auto& v : voices)
         {
             if (! v.active) continue;
@@ -280,7 +276,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             if (! v.ampEnv.isActive()) { v.active = false; continue; }
             ++activeCount;
 
-            // LFO
             float lfo;
             v.lfoInc = (double) pv[LfoRate] / sr;
             v.lfoPhase += v.lfoInc;
@@ -296,7 +291,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                             + (v.velocity - 0.5f) * pv[ModVelCutoff] * 0.5f + modWheel * 0.3f;
             float resMod = 0.0f;
 
-            // патч-бей: управляющие источники
             for (int c = 0; c < NUM_PATCH; ++c)
             {
                 const auto& cb = cables[(size_t) c];
@@ -336,7 +330,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             v.phase2 += dt2; if (v.phase2 >= 1.0) v.phase2 -= std::floor (v.phase2);
             v.phaseSub += dtS; if (v.phaseSub >= 1.0) v.phaseSub -= std::floor (v.phaseSub);
 
-            // патч-бей: audio-rate источники
             float audioCut = 0.0f;
             v.audioPitchMod = 0.0f;
             for (int c = 0; c < NUM_PATCH; ++c)
@@ -369,7 +362,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             mixR += s * v.panR;
         }
 
-        // --- авто-нормализация громкости ---
         const float target = 1.0f / std::sqrt ((float) juce::jmax (1, activeCount));
         normGain += 0.0015f * (target - normGain);
         const float gain = normGain * pv[Volume] * juce::jlimit (0.0f, 2.0f, 1.0f + volMod);
@@ -377,7 +369,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         float dryL = mixL * gain;
         float dryR = mixR * gain;
 
-        // --- мастер-сатурация ---
         if (mDrive > 0.0001f)
         {
             const float d = 1.0f + mDrive * 4.0f;
@@ -386,7 +377,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             dryR = std::tanh (dryR * d) * comp;
         }
 
-        // --- ЭФФЕКТЫ (после суммы, отдельно L/R) ---
         float outL = dryL, outR = dryR;
         if (! bypass)
         {
@@ -419,7 +409,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             }
         }
 
-        // --- защита от NaN/Inf + мягкий лимитер ---
         if (! std::isfinite (outL) || ! std::isfinite (outR))
         {
             outL = outR = 0.0f;
