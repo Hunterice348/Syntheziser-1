@@ -28,11 +28,9 @@ void AbyssLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
     auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) / 2.0f;
     auto centre = bounds.getCentre();
 
-    // Тень под ручкой
     g.setColour (juce::Colour (0x50000000));
     g.fillEllipse (bounds.reduced (3).translated (1.5f, 2.0f));
 
-    // Основной круг с металлическим градиентом
     juce::ColourGradient grad (
         juce::Colour (0xFF6A6A74), centre.x - radius * 0.7f, centre.y - radius * 0.7f,
         juce::Colour (0xFF1A1A22), centre.x + radius * 0.7f, centre.y + radius * 0.7f,
@@ -41,15 +39,12 @@ void AbyssLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
     g.setGradientFill (grad);
     g.fillEllipse (bounds.reduced (5));
 
-    // Внешняя обводка
     g.setColour (juce::Colour (0xFF0A0A12));
     g.drawEllipse (bounds.reduced (5), 1.5f);
 
-    // Внутренний блик (металлический эффект)
     g.setColour (juce::Colour (0x30FFFFFF));
     g.fillEllipse (bounds.reduced (10).withTrimmedBottom (radius * 0.6f));
 
-    // Индикаторная дуга (красная)
     float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
     juce::Path arc;
     arc.addCentredArc (centre.x, centre.y, radius - 3, radius - 3,
@@ -57,7 +52,6 @@ void AbyssLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
     g.setColour (juce::Colour (0xFFB41E28));
     g.strokePath (arc, juce::PathStrokeType (2.5f));
 
-    // Индикаторная точка (как на Volca Drum)
     juce::Point<float> indicatorPoint (
         centre.x + std::cos (angle) * (radius - 12),
         centre.y + std::sin (angle) * (radius - 12));
@@ -66,23 +60,17 @@ void AbyssLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
 }
 
 void AbyssLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
-                                     int, int, int, int, juce::ComboBox& box)
+                                     int, int, int, int, juce::ComboBox&)
 {
     juce::Rectangle<int> boxBounds (0, 0, width, height);
-    
-    // Фон с градиентом
     juce::ColourGradient grad (
         juce::Colour (0xFF3A3A44), 0.0f, 0.0f,
         juce::Colour (0xFF1A1A22), 0.0f, (float) height,
         false);
     g.setGradientFill (grad);
     g.fillRoundedRectangle (boxBounds.toFloat(), 4.0f);
-    
-    // Обводка
     g.setColour (juce::Colour (0xFF5A5A64));
     g.drawRoundedRectangle (boxBounds.toFloat().reduced (0.5f), 4.0f, 1.0f);
-    
-    // Стрелка
     juce::Path arrow;
     auto arrowX = (float) width - 14.0f;
     auto arrowY = (float) height * 0.5f;
@@ -128,7 +116,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
         addAndMakeVisible (c);
     };
 
-    // OSC
     setupSlider (osc2LevelSlider); setupSlider (osc2DetuneSlider);
     setupSlider (subLevelSlider); setupSlider (noiseLevelSlider);
     setupSlider (unisonSpreadSlider);
@@ -144,7 +131,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupLabel (waveform1Label, "OSC 1"); addAndMakeVisible (waveform1Label);
     setupLabel (waveform2Label, "OSC 2"); addAndMakeVisible (waveform2Label);
 
-    // FILTER
     setupSlider (filterCutoffSlider); setupSlider (filterResonanceSlider);
     setupSlider (filterDriveSlider); setupSlider (filterKeyTrackSlider);
     setupLabel (filterCutoffLabel, "CUTOFF"); addAndMakeVisible (filterCutoffLabel);
@@ -156,7 +142,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupCombo (filterTypeBox);
     setupLabel (filterTypeLabel, "FILTER TYPE"); addAndMakeVisible (filterTypeLabel);
 
-    // ENV
     setupSlider (attackSlider); setupSlider (decaySlider);
     setupSlider (sustainSlider); setupSlider (releaseSlider);
     setupSlider (filterAttackSlider); setupSlider (filterDecaySlider);
@@ -172,7 +157,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupLabel (filterReleaseLabel, "F-R"); addAndMakeVisible (filterReleaseLabel);
     setupLabel (filterEnvAmountLabel, "ENV AMT"); addAndMakeVisible (filterEnvAmountLabel);
 
-    // LFO
     setupSlider (lfoRateSlider); setupSlider (lfoDepthSlider);
     setupLabel (lfoRateLabel, "RATE"); addAndMakeVisible (lfoRateLabel);
     setupLabel (lfoDepthLabel, "DEPTH"); addAndMakeVisible (lfoDepthLabel);
@@ -181,7 +165,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupCombo (lfoWaveformBox);
     setupLabel (lfoWaveformLabel, "LFO WAVE"); addAndMakeVisible (lfoWaveformLabel);
 
-    // MOD
     setupSlider (modLfoToPitchSlider); setupSlider (modLfoToCutoffSlider);
     setupSlider (modEnvToPitchSlider); setupSlider (modVelToCutoffSlider);
     setupLabel (modLfoToPitchLabel, "LFO>PIT"); addAndMakeVisible (modLfoToPitchLabel);
@@ -189,7 +172,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupLabel (modEnvToPitchLabel, "ENV>PIT"); addAndMakeVisible (modEnvToPitchLabel);
     setupLabel (modVelToCutoffLabel, "VEL>CUT"); addAndMakeVisible (modVelToCutoffLabel);
 
-    // PATCH
     setupCombo (patch1SrcBox); setupCombo (patch1DstBox); setupSlider (patch1AmtSlider);
     setupCombo (patch2SrcBox); setupCombo (patch2DstBox); setupSlider (patch2AmtSlider);
     setupCombo (patch3SrcBox); setupCombo (patch3DstBox); setupSlider (patch3AmtSlider);
@@ -215,7 +197,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     patch3SrcBox.addItemList (srcList, 1); patch3DstBox.addItemList (dstList, 1);
     patch4SrcBox.addItemList (srcList, 1); patch4DstBox.addItemList (dstList, 1);
 
-    // FX
     setupSlider (distDriveSlider); setupSlider (distMixSlider);
     setupSlider (chorusRateSlider); setupSlider (chorusDepthSlider); setupSlider (chorusMixSlider);
     setupSlider (delayTimeSlider); setupSlider (delayFeedbackSlider); setupSlider (delayMixSlider);
@@ -235,7 +216,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     fxBypassButton.setButtonText ("FX BYPASS");
     addAndMakeVisible (fxBypassButton);
 
-    // MASTER
     setupSlider (analogDriftSlider); setupSlider (masterDriveSlider);
     setupSlider (volumeSlider); setupSlider (macroMorphSlider);
     setupLabel (analogDriftLabel, "DRIFT"); addAndMakeVisible (analogDriftLabel);
@@ -243,7 +223,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupLabel (volumeLabel, "VOLUME"); addAndMakeVisible (volumeLabel);
     setupLabel (macroMorphLabel, "CLEAN < > DIRTY"); addAndMakeVisible (macroMorphLabel);
 
-    // DRUM MACHINE
     setupSlider (drumVolSlider); setupSlider (drumDriveSlider);
     setupLabel (drumVolLabel, "DRUM VOL"); addAndMakeVisible (drumVolLabel);
     setupLabel (drumDriveLabel, "DRUM DRV"); addAndMakeVisible (drumDriveLabel);
@@ -280,7 +259,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupLabel (percDecayLabel, "PERC DEC"); addAndMakeVisible (percDecayLabel);
     setupLabel (percToneLabel, "PERC TONE"); addAndMakeVisible (percToneLabel);
 
-    // SECTION LABELS
     setupSectionLabel (sectionOsc, "OSCILLATORS"); addAndMakeVisible (sectionOsc);
     setupSectionLabel (sectionFilter, "FILTER"); addAndMakeVisible (sectionFilter);
     setupSectionLabel (sectionEnv, "ENVELOPE"); addAndMakeVisible (sectionEnv);
@@ -291,7 +269,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSectionLabel (sectionMaster, "MASTER"); addAndMakeVisible (sectionMaster);
     setupSectionLabel (sectionDrum, "DRUM MACHINE"); addAndMakeVisible (sectionDrum);
 
-    // SCALE SELECTOR
     scaleBox.addItem ("50%", 1);
     scaleBox.addItem ("75%", 2);
     scaleBox.addItem ("100%", 3);
@@ -302,7 +279,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupCombo (scaleBox);
     setupLabel (scaleLabel, "UI SCALE"); addAndMakeVisible (scaleLabel);
 
-    // ATTACHMENTS
     attackAtt = std::make_unique<Attachment> (parameters, "attack", attackSlider);
     decayAtt = std::make_unique<Attachment> (parameters, "decay", decaySlider);
     sustainAtt = std::make_unique<Attachment> (parameters, "sustain", sustainSlider);
@@ -472,7 +448,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     auto fxArea = area.removeFromTop ((int)(180 * s));
     auto bottomArea = area;
 
-    // OSC
     auto oscArea = synthArea.removeFromLeft ((int)(180 * s));
     sectionOsc.setBounds (oscArea.removeFromTop ((int)(22 * s)));
     waveform1Label.setBounds (oscArea.removeFromTop ((int)(14 * s)));
@@ -486,7 +461,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     noiseLevelLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); noiseLevelSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
     unisonSpreadLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); unisonSpreadSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
 
-    // FILTER
     auto filterArea = synthArea.removeFromLeft ((int)(180 * s));
     sectionFilter.setBounds (filterArea.removeFromTop ((int)(22 * s)));
     filterTypeLabel.setBounds (filterArea.removeFromTop ((int)(14 * s)));
@@ -497,7 +471,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     filterDriveLabel.setBounds (filterArea.removeFromTop ((int)(12 * s))); filterDriveSlider.setBounds (filterArea.removeFromTop ((int)(50 * s)));
     filterKeyTrackLabel.setBounds (filterArea.removeFromTop ((int)(12 * s))); filterKeyTrackSlider.setBounds (filterArea.removeFromTop ((int)(50 * s)));
 
-    // ENV
     auto envArea = synthArea.removeFromLeft ((int)(280 * s));
     sectionEnv.setBounds (envArea.removeFromTop ((int)(22 * s)));
     auto ampLabelArea = envArea.removeFromTop ((int)(14 * s));
@@ -524,7 +497,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     filterReleaseSlider.setBounds (fltSliderArea.removeFromLeft ((int)(56 * s)));
     filterEnvAmountSlider.setBounds (fltSliderArea.removeFromLeft ((int)(56 * s)));
 
-    // LFO
     auto lfoArea = synthArea.removeFromLeft ((int)(140 * s));
     sectionLfo.setBounds (lfoArea.removeFromTop ((int)(22 * s)));
     lfoWaveformLabel.setBounds (lfoArea.removeFromTop ((int)(14 * s)));
@@ -533,7 +505,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     lfoRateLabel.setBounds (lfoArea.removeFromTop ((int)(12 * s))); lfoRateSlider.setBounds (lfoArea.removeFromTop ((int)(50 * s)));
     lfoDepthLabel.setBounds (lfoArea.removeFromTop ((int)(12 * s))); lfoDepthSlider.setBounds (lfoArea.removeFromTop ((int)(50 * s)));
 
-    // MOD
     auto modArea = synthArea.removeFromLeft ((int)(160 * s));
     sectionMod.setBounds (modArea.removeFromTop ((int)(22 * s)));
     modLfoToPitchLabel.setBounds (modArea.removeFromTop ((int)(12 * s))); modLfoToPitchSlider.setBounds (modArea.removeFromTop ((int)(50 * s)));
@@ -541,7 +512,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     modEnvToPitchLabel.setBounds (modArea.removeFromTop ((int)(12 * s))); modEnvToPitchSlider.setBounds (modArea.removeFromTop ((int)(50 * s)));
     modVelToCutoffLabel.setBounds (modArea.removeFromTop ((int)(12 * s))); modVelToCutoffSlider.setBounds (modArea.removeFromTop ((int)(50 * s)));
 
-    // PATCH
     auto patchArea = synthArea;
     sectionPatch.setBounds (patchArea.removeFromTop ((int)(22 * s)));
     patch1SrcLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch1SrcBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
@@ -557,7 +527,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     patch4DstLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch4DstBox.setBounds (patchArea.removeFromTop ((int)(22 * s)).reduced ((int)(5 * s), 0));
     patch4AmtLabel.setBounds (patchArea.removeFromTop ((int)(12 * s))); patch4AmtSlider.setBounds (patchArea.removeFromTop ((int)(46 * s)).reduced ((int)(5 * s), 0));
 
-    // DRUM MACHINE
     sectionDrum.setBounds (drumArea.removeFromTop ((int)(22 * s)));
     drumVolLabel.setBounds (drumArea.removeFromLeft ((int)(80 * s)).removeFromTop ((int)(12 * s)));
     drumVolSlider.setBounds (drumArea.removeFromLeft ((int)(80 * s)).removeFromTop ((int)(60 * s)));
@@ -598,7 +567,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     percDecayLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); percDecaySlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
     percToneLabel.setBounds (drumRow2.removeFromLeft ((int)(12 * s))); percToneSlider.setBounds (drumRow2.removeFromLeft ((int)(70 * s)));
 
-    // FX
     sectionFx.setBounds (fxArea.removeFromTop ((int)(22 * s)));
     auto distArea = fxArea.removeFromLeft ((int)(120 * s));
     distDriveLabel.setBounds (distArea.removeFromTop ((int)(12 * s))); distDriveSlider.setBounds (distArea.removeFromTop ((int)(60 * s)));
@@ -616,14 +584,10 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     reverbMixLabel.setBounds (reverbArea.removeFromTop ((int)(12 * s))); reverbMixSlider.setBounds (reverbArea.removeFromTop ((int)(60 * s)));
     fxBypassButton.setBounds (fxArea.reduced ((int)(30 * s), (int)(40 * s)));
 
-    // MASTER + SCALE SELECTOR
     sectionMaster.setBounds (bottomArea.removeFromTop ((int)(22 * s)));
-    
-    // Scale selector в правом верхнем углу мастер-секции
     auto masterTop = bottomArea.removeFromTop ((int)(12 * s));
     scaleLabel.setBounds (masterTop.removeFromRight ((int)(100 * s)));
     scaleBox.setBounds (masterTop.removeFromRight ((int)(80 * s)));
-    
     macroMorphLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); macroMorphSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
     analogDriftLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); analogDriftSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
     masterDriveLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); masterDriveSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
