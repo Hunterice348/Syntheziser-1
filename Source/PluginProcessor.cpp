@@ -30,16 +30,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("decay", "Decay", 0.001f, 2.0f, 0.1f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("sustain", "Sustain", 0.0f, 1.0f, 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("release", "Release", 0.001f, 3.0f, 0.1f));
-    
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("volume", "Volume", 0.0f, 1.0f, 0.8f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Level", "Osc 2 Level", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Detune", "Osc 2 Detune", -12.0f, 12.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("subLevel", "Sub Level", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("noiseLevel", "Noise Level", 0.0f, 1.0f, 0.0f));
-    
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("analogDrift", "Analog Drift", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("masterDrive", "Master Drive", 0.0f, 1.0f, 0.0f));
-    
+
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1", "Osc 1 Waveform", waveforms, 0));
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform2", "Osc 2 Waveform", waveforms, 1));
@@ -51,7 +51,7 @@ void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samples
 {
     currentSampleRate = sampleRate;
     smoothedDrive.reset (sampleRate, 0.05);
-    
+
     for (auto& voice : voices)
     {
         voice.adsr.setSampleRate (sampleRate);
@@ -94,16 +94,16 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     float sustain = parameters.getRawParameterValue ("sustain")->load();
     float release = parameters.getRawParameterValue ("release")->load();
     float volume = parameters.getRawParameterValue ("volume")->load();
-    
+
     float osc2Level = parameters.getRawParameterValue ("osc2Level")->load();
     float osc2Detune = parameters.getRawParameterValue ("osc2Detune")->load();
     float subLevel = parameters.getRawParameterValue ("subLevel")->load();
     float noiseLevel = parameters.getRawParameterValue ("noiseLevel")->load();
     float analogDrift = parameters.getRawParameterValue ("analogDrift")->load();
     float masterDrive = parameters.getRawParameterValue ("masterDrive")->load();
-    
+
     smoothedDrive.setTargetValue (masterDrive);
-    
+
     int wf1 = static_cast<int> (parameters.getRawParameterValue ("waveform1")->load());
     int wf2 = static_cast<int> (parameters.getRawParameterValue ("waveform2")->load());
     currentWaveform1 = static_cast<Waveform> (juce::jlimit (0, 3, wf1));
@@ -125,14 +125,13 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         {
             int note = msg.getNoteNumber();
             float freq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
-            
+
             int voiceIndex = -1;
             for (int i = 0; i < MAX_VOICES; ++i)
                 if (!voices[i].active) { voiceIndex = i; break; }
-            
+
             if (voiceIndex == -1) voiceIndex = 0;
-                
-            // ⚠️ ИСПРАВЛЕНИЕ: передаём 4 параметра, включая analogDrift
+
             voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift);
             voices[voiceIndex].midiNote = note;
         }
@@ -198,9 +197,11 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             // Analog Saturation (Soft Clipping via tanh)
             float driveMultiplier = 1.0f + (currentDrive * 4.0f);
             float saturatedMix = std::tanh (mix * driveMultiplier);
-            
+
+            // Компенсация громкости при насыщении
             float compensation = 1.0f / std::tanh (driveMultiplier);
-            if (driveMultiplier > 1.0f) {
+            if (driveMultiplier > 1.0f)
+            {
                 saturatedMix *= compensation;
             }
 
