@@ -164,7 +164,6 @@ private:
         bool active = false;
         float level = 1.0f, tune = 0.0f, decay = 0.3f, tone = 0.5f;
 
-        // Oscillator / noise state
         double phase = 0.0;
         double pitchEnv = 0.0;
         double ampEnvPhase = 0.0;
@@ -172,6 +171,8 @@ private:
         juce::uint32 noiseSeed = 0xABCD1234u;
         float clapBurstPhase = 0.0f;
         int clapBurstCount = 0;
+        float hpState = 0.0f;
+        float hpIn = 0.0f;
 
         void trigger (float vel, float lvl, float tn, float dec, float ton)
         {
@@ -186,6 +187,8 @@ private:
             ampEnvVal = 1.0f;
             clapBurstPhase = 0.0f;
             clapBurstCount = 0;
+            hpState = 0.0f;
+            hpIn = 0.0f;
         }
 
         float process (double sampleRate)
@@ -201,7 +204,7 @@ private:
                 case Kick:
                 {
                     const float baseFreq = 50.0f * std::pow (2.0f, tune / 12.0f);
-                    const float freq = baseFreq * (1.0f + pitchEnv * 2.0f);
+                    const float freq = baseFreq * (1.0f + (float) pitchEnv * 2.0f);
                     phase += freq / sampleRate;
                     if (phase >= 1.0) phase -= 1.0;
                     out = std::sin (6.2831853f * (float) phase);
@@ -214,7 +217,7 @@ private:
                     const float baseFreq = 200.0f * std::pow (2.0f, tune / 12.0f);
                     phase += baseFreq / sampleRate;
                     if (phase >= 1.0) phase -= 1.0;
-                    float tri = (phase < 0.5) ? (4.0f * (float) phase - 1.0f) : (3.0f - 4.0f * (float) phase);
+                    float tri = ((float) phase < 0.5f) ? (4.0f * (float) phase - 1.0f) : (3.0f - 4.0f * (float) phase);
                     float nz = noise (noiseSeed);
                     out = tri * 0.4f + nz * 0.8f;
                     break;
@@ -223,9 +226,9 @@ private:
                 {
                     float nz = noise (noiseSeed);
                     const float cutoff = 4000.0f * std::pow (10.0f, (tone - 0.5f) * 2.0f);
-                    const float g = std::tan (juce::MathConstants<float>::pi * (float) juce::jlimit (200.0, sampleRate * 0.45, cutoff) / (float) sampleRate);
+                    const float cutoffClamped = juce::jlimit (200.0f, (float)(sampleRate * 0.45), cutoff);
+                    const float g = std::tan (juce::MathConstants<float>::pi * cutoffClamped / (float) sampleRate);
                     const float a1 = g / (1.0f + g);
-                    static float hpState = 0.0f, hpIn = 0.0f;
                     float y = a1 * (hpState + nz - hpIn);
                     hpState = y;
                     hpIn = nz;
@@ -249,11 +252,11 @@ private:
                 case Tom:
                 {
                     const float baseFreq = 120.0f * std::pow (2.0f, tune / 12.0f);
-                    const float freq = baseFreq * (1.0f + pitchEnv * 1.0f);
+                    const float freq = baseFreq * (1.0f + (float) pitchEnv * 1.0f);
                     phase += freq / sampleRate;
                     if (phase >= 1.0) phase -= 1.0;
                     out = std::sin (6.2831853f * (float) phase);
-                    pitchEnv -= pitchDecayRate * 0.7f;
+                    pitchEnv -= pitchDecayRate * 0.7;
                     if (pitchEnv < 0.0) pitchEnv = 0.0;
                     break;
                 }
