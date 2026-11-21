@@ -4,7 +4,7 @@
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
-    setSize (1100, 500);
+    setSize (1200, 600);
 
     auto setupSlider = [](juce::Slider& s) {
         s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -44,11 +44,26 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSlider (modEnvToPitchSlider); addAndMakeVisible (modEnvToPitchSlider);
     setupSlider (modVelToCutoffSlider); addAndMakeVisible (modVelToCutoffSlider);
 
-    // Semi-Modular Patch Bay UI
     setupSlider (patch1AmtSlider); addAndMakeVisible (patch1AmtSlider);
     setupSlider (patch2AmtSlider); addAndMakeVisible (patch2AmtSlider);
     setupSlider (patch3AmtSlider); addAndMakeVisible (patch3AmtSlider);
     setupSlider (patch4AmtSlider); addAndMakeVisible (patch4AmtSlider);
+
+    // Effects Sliders (Stage 11)
+    setupSlider (distDriveSlider); addAndMakeVisible (distDriveSlider);
+    setupSlider (distMixSlider); addAndMakeVisible (distMixSlider);
+    setupSlider (chorusRateSlider); addAndMakeVisible (chorusRateSlider);
+    setupSlider (chorusDepthSlider); addAndMakeVisible (chorusDepthSlider);
+    setupSlider (chorusMixSlider); addAndMakeVisible (chorusMixSlider);
+    setupSlider (delayTimeSlider); addAndMakeVisible (delayTimeSlider);
+    setupSlider (delayFeedbackSlider); addAndMakeVisible (delayFeedbackSlider);
+    setupSlider (delayMixSlider); addAndMakeVisible (delayMixSlider);
+    setupSlider (reverbDecaySlider); addAndMakeVisible (reverbDecaySlider);
+    setupSlider (reverbMixSlider); addAndMakeVisible (reverbMixSlider);
+
+    fxBypassButton.setButtonText ("FX BYPASS");
+    fxBypassButton.setColour (juce::ToggleButton::textColourId, juce::Colours::white);
+    addAndMakeVisible (fxBypassButton);
 
     auto setupCombo = [](juce::ComboBox& c) {
         c.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xFF2A2A32));
@@ -127,6 +142,19 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     patch4SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch3Src", patch4SrcBox);
     patch4DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch3Dst", patch4DstBox);
     patch4AmtAtt = std::make_unique<Attachment> (parameters, "patch3Amt", patch4AmtSlider);
+
+    // Effects Attachments
+    distDriveAtt = std::make_unique<Attachment> (parameters, "distDrive", distDriveSlider);
+    distMixAtt = std::make_unique<Attachment> (parameters, "distMix", distMixSlider);
+    chorusRateAtt = std::make_unique<Attachment> (parameters, "chorusRate", chorusRateSlider);
+    chorusDepthAtt = std::make_unique<Attachment> (parameters, "chorusDepth", chorusDepthSlider);
+    chorusMixAtt = std::make_unique<Attachment> (parameters, "chorusMix", chorusMixSlider);
+    delayTimeAtt = std::make_unique<Attachment> (parameters, "delayTime", delayTimeSlider);
+    delayFeedbackAtt = std::make_unique<Attachment> (parameters, "delayFeedback", delayFeedbackSlider);
+    delayMixAtt = std::make_unique<Attachment> (parameters, "delayMix", delayMixSlider);
+    reverbDecayAtt = std::make_unique<Attachment> (parameters, "reverbDecay", reverbDecaySlider);
+    reverbMixAtt = std::make_unique<Attachment> (parameters, "reverbMix", reverbMixSlider);
+    fxBypassAtt = std::make_unique<ButtonAttachment> (parameters, "fxBypass", fxBypassButton);
     
     wf1Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform1", waveform1Box);
     wf2Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform2", waveform2Box);
@@ -150,67 +178,91 @@ void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
 
 void HuntericeAbyssAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced (20).removeFromTop (340);
+    auto area = getLocalBounds().reduced (15).removeFromTop (340);
     
-    auto oscArea = area.removeFromLeft (160);
+    auto oscArea = area.removeFromLeft (150);
     waveform1Box.setBounds (oscArea.removeFromTop (30).reduced (10));
     waveform2Box.setBounds (oscArea.removeFromTop (30).reduced (10));
-    osc2LevelSlider.setBounds (oscArea.removeFromLeft (40));
-    osc2DetuneSlider.setBounds (oscArea.removeFromLeft (40));
-    subLevelSlider.setBounds (oscArea.removeFromLeft (40));
-    noiseLevelSlider.setBounds (oscArea.removeFromLeft (40));
+    osc2LevelSlider.setBounds (oscArea.removeFromLeft (37));
+    osc2DetuneSlider.setBounds (oscArea.removeFromLeft (37));
+    subLevelSlider.setBounds (oscArea.removeFromLeft (37));
+    noiseLevelSlider.setBounds (oscArea.removeFromLeft (37));
     
-    auto filterArea = area.removeFromLeft (180);
+    auto filterArea = area.removeFromLeft (170);
     filterTypeBox.setBounds (filterArea.removeFromTop (30).reduced (10));
-    filterCutoffSlider.setBounds (filterArea.removeFromLeft (45));
-    filterResonanceSlider.setBounds (filterArea.removeFromLeft (45));
-    filterDriveSlider.setBounds (filterArea.removeFromLeft (45));
-    filterKeyTrackSlider.setBounds (filterArea.removeFromLeft (45));
+    filterCutoffSlider.setBounds (filterArea.removeFromLeft (42));
+    filterResonanceSlider.setBounds (filterArea.removeFromLeft (42));
+    filterDriveSlider.setBounds (filterArea.removeFromLeft (42));
+    filterKeyTrackSlider.setBounds (filterArea.removeFromLeft (42));
     
-    auto modArea = area.removeFromLeft (160);
+    auto modArea = area.removeFromLeft (150);
     lfoWaveformBox.setBounds (modArea.removeFromTop (30).reduced (10));
-    lfoRateSlider.setBounds (modArea.removeFromLeft (40));
-    lfoDepthSlider.setBounds (modArea.removeFromLeft (40));
-    filterEnvAmountSlider.setBounds (modArea.removeFromLeft (40));
-    filterAttackSlider.setBounds (modArea.removeFromLeft (40));
+    lfoRateSlider.setBounds (modArea.removeFromLeft (37));
+    lfoDepthSlider.setBounds (modArea.removeFromLeft (37));
+    filterEnvAmountSlider.setBounds (modArea.removeFromLeft (37));
+    filterAttackSlider.setBounds (modArea.removeFromLeft (37));
     
-    auto matrixArea = area.removeFromLeft (160);
+    auto matrixArea = area.removeFromLeft (150);
     matrixArea.removeFromTop (10);
-    modLfoToPitchSlider.setBounds (matrixArea.removeFromLeft (40));
-    modLfoToCutoffSlider.setBounds (matrixArea.removeFromLeft (40));
-    modEnvToPitchSlider.setBounds (matrixArea.removeFromLeft (40));
-    modVelToCutoffSlider.setBounds (matrixArea.removeFromLeft (40));
+    modLfoToPitchSlider.setBounds (matrixArea.removeFromLeft (37));
+    modLfoToCutoffSlider.setBounds (matrixArea.removeFromLeft (37));
+    modEnvToPitchSlider.setBounds (matrixArea.removeFromLeft (37));
+    modVelToCutoffSlider.setBounds (matrixArea.removeFromLeft (37));
     
-    // SEMI-MODULAR PATCH BAY (Stage 10)
-    auto patchArea = area.removeFromLeft (240);
+    auto patchArea = area.removeFromLeft (220);
     patchArea.removeFromTop (10);
     
     auto rowH = 60;
-    patch1SrcBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
-    patch1DstBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
-    patch1AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (5, 0));
+    patch1SrcBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
+    patch1DstBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
+    patch1AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (3, 0));
     
-    patch2SrcBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
-    patch2DstBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
-    patch2AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (5, 0));
+    patch2SrcBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
+    patch2DstBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
+    patch2AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (3, 0));
     
-    patch3SrcBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
-    patch3DstBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
-    patch3AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (5, 0));
+    patch3SrcBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
+    patch3DstBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
+    patch3AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (3, 0));
     
-    patch4SrcBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
-    patch4DstBox.setBounds (patchArea.removeFromTop (25).reduced (5, 0));
-    patch4AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (5, 0));
+    patch4SrcBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
+    patch4DstBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
+    patch4AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (3, 0));
     
-    auto envArea = area.removeFromLeft (200);
-    attackSlider.setBounds (envArea.removeFromLeft (50));
-    decaySlider.setBounds (envArea.removeFromLeft (50));
-    sustainSlider.setBounds (envArea.removeFromLeft (50));
-    releaseSlider.setBounds (envArea.removeFromLeft (50));
-    filterDecaySlider.setBounds (envArea.removeFromLeft (50));
+    auto envArea = area.removeFromLeft (180);
+    attackSlider.setBounds (envArea.removeFromLeft (45));
+    decaySlider.setBounds (envArea.removeFromLeft (45));
+    sustainSlider.setBounds (envArea.removeFromLeft (45));
+    releaseSlider.setBounds (envArea.removeFromLeft (45));
     
-    auto masterArea = area.removeFromLeft (120);
-    analogDriftSlider.setBounds (masterArea.removeFromLeft (40));
-    masterDriveSlider.setBounds (masterArea.removeFromLeft (40));
-    volumeSlider.setBounds (masterArea.removeFromLeft (40));
+    auto masterArea = area.removeFromLeft (100);
+    analogDriftSlider.setBounds (masterArea.removeFromLeft (33));
+    masterDriveSlider.setBounds (masterArea.removeFromLeft (33));
+    volumeSlider.setBounds (masterArea.removeFromLeft (33));
+
+    // EFFECTS SECTION (Stage 11) - вторая строка интерфейса
+    auto fxArea = getLocalBounds().reduced (15).removeFromTop (380).removeFromBottom (200);
+    
+    g.setColour (juce::Colour (0xFF2A2A32));
+    g.fillRect (fxArea);
+    
+    auto distArea = fxArea.removeFromLeft (150);
+    distDriveSlider.setBounds (distArea.removeFromLeft (75));
+    distMixSlider.setBounds (distArea.removeFromLeft (75));
+    
+    auto chorusArea = fxArea.removeFromLeft (180);
+    chorusRateSlider.setBounds (chorusArea.removeFromLeft (60));
+    chorusDepthSlider.setBounds (chorusArea.removeFromLeft (60));
+    chorusMixSlider.setBounds (chorusArea.removeFromLeft (60));
+    
+    auto delayArea = fxArea.removeFromLeft (200);
+    delayTimeSlider.setBounds (delayArea.removeFromLeft (66));
+    delayFeedbackSlider.setBounds (delayArea.removeFromLeft (66));
+    delayMixSlider.setBounds (delayArea.removeFromLeft (66));
+    
+    auto reverbArea = fxArea.removeFromLeft (150);
+    reverbDecaySlider.setBounds (reverbArea.removeFromLeft (75));
+    reverbMixSlider.setBounds (reverbArea.removeFromLeft (75));
+    
+    fxBypassButton.setBounds (fxArea.reduced (20));
 }
