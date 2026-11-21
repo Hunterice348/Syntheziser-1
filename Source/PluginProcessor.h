@@ -54,7 +54,7 @@ private:
         bool active = false;
         int midiNote = -1;
         float velocity = 0.0f;
-        float voiceDetune = 0.0f; // Для Unison
+        float voiceDetune = 0.0f;
         
         double phase1 = 0.0, phaseInc1 = 0.0;
         double phase2 = 0.0, phaseInc2 = 0.0;
@@ -75,8 +75,6 @@ private:
         {
             active = true;
             velocity = vel;
-            
-            // Аналоговый дрейф + Unison-расстройка для каждого голоса своя
             driftOffset = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * 2.0f * analogDriftAmount * 0.015f;
             voiceDetune = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * unisonSpread;
             
