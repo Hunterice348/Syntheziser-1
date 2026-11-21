@@ -4,45 +4,51 @@
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
-    setSize (950, 450);
+    setSize (1000, 480);
 
     auto setupSlider = [](juce::Slider& s) {
         s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 50, 20);
     };
 
-    // ADSR
     setupSlider (attackSlider); addAndMakeVisible (attackSlider);
     setupSlider (decaySlider); addAndMakeVisible (decaySlider);
     setupSlider (sustainSlider); addAndMakeVisible (sustainSlider);
     setupSlider (releaseSlider); addAndMakeVisible (releaseSlider);
     setupSlider (volumeSlider); addAndMakeVisible (volumeSlider);
     
-    // Oscillators
     setupSlider (osc2LevelSlider); addAndMakeVisible (osc2LevelSlider);
     setupSlider (osc2DetuneSlider); addAndMakeVisible (osc2DetuneSlider);
     setupSlider (subLevelSlider); addAndMakeVisible (subLevelSlider);
     setupSlider (noiseLevelSlider); addAndMakeVisible (noiseLevelSlider);
 
-    // Analog
     setupSlider (analogDriftSlider); addAndMakeVisible (analogDriftSlider);
     setupSlider (masterDriveSlider); addAndMakeVisible (masterDriveSlider);
 
-    // Filter (Stage 7)
     setupSlider (filterCutoffSlider); addAndMakeVisible (filterCutoffSlider);
     setupSlider (filterResonanceSlider); addAndMakeVisible (filterResonanceSlider);
     setupSlider (filterDriveSlider); addAndMakeVisible (filterDriveSlider);
     setupSlider (filterKeyTrackSlider); addAndMakeVisible (filterKeyTrackSlider);
 
-    // ComboBoxes
+    setupSlider (filterAttackSlider); addAndMakeVisible (filterAttackSlider);
+    setupSlider (filterDecaySlider); addAndMakeVisible (filterDecaySlider);
+    setupSlider (filterSustainSlider); addAndMakeVisible (filterSustainSlider);
+    setupSlider (filterReleaseSlider); addAndMakeVisible (filterReleaseSlider);
+    setupSlider (filterEnvAmountSlider); addAndMakeVisible (filterEnvAmountSlider);
+
+    setupSlider (lfoRateSlider); addAndMakeVisible (lfoRateSlider);
+    setupSlider (lfoDepthSlider); addAndMakeVisible (lfoDepthSlider);
+
     waveform1Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     waveform2Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     filterTypeBox.addItemList ({ "LP 12dB", "LP 24dB", "High Pass", "Band Pass" }, 1);
+    lfoWaveformBox.addItemList ({ "Sine", "Triangle", "Saw", "Square", "S&H" }, 1);
+    
     addAndMakeVisible (waveform1Box);
     addAndMakeVisible (waveform2Box);
     addAndMakeVisible (filterTypeBox);
+    addAndMakeVisible (lfoWaveformBox);
 
-    // Attachments
     attackAtt = std::make_unique<Attachment> (parameters, "attack", attackSlider);
     decayAtt = std::make_unique<Attachment> (parameters, "decay", decaySlider);
     sustainAtt = std::make_unique<Attachment> (parameters, "sustain", sustainSlider);
@@ -62,9 +68,19 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     filterDriveAtt = std::make_unique<Attachment> (parameters, "filterDrive", filterDriveSlider);
     filterKeyTrackAtt = std::make_unique<Attachment> (parameters, "filterKeyTrack", filterKeyTrackSlider);
     
+    filterAttackAtt = std::make_unique<Attachment> (parameters, "filterAttack", filterAttackSlider);
+    filterDecayAtt = std::make_unique<Attachment> (parameters, "filterDecay", filterDecaySlider);
+    filterSustainAtt = std::make_unique<Attachment> (parameters, "filterSustain", filterSustainSlider);
+    filterReleaseAtt = std::make_unique<Attachment> (parameters, "filterRelease", filterReleaseSlider);
+    filterEnvAmountAtt = std::make_unique<Attachment> (parameters, "filterEnvAmount", filterEnvAmountSlider);
+    
+    lfoRateAtt = std::make_unique<Attachment> (parameters, "lfoRate", lfoRateSlider);
+    lfoDepthAtt = std::make_unique<Attachment> (parameters, "lfoDepth", lfoDepthSlider);
+    
     wf1Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform1", waveform1Box);
     wf2Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform2", waveform2Box);
     filterTypeAtt = std::make_unique<ComboBoxAttachment> (parameters, "filterType", filterTypeBox);
+    lfoWaveformAtt = std::make_unique<ComboBoxAttachment> (parameters, "lfoWaveform", lfoWaveformBox);
 }
 
 HuntericeAbyssAudioProcessorEditor::~HuntericeAbyssAudioProcessorEditor() {}
@@ -83,35 +99,47 @@ void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
 
 void HuntericeAbyssAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced (20).removeFromTop (280);
+    auto area = getLocalBounds().reduced (20).removeFromTop (320);
     
     // Oscillator Section
-    auto oscArea = area.removeFromLeft (180);
+    auto oscArea = area.removeFromLeft (160);
     waveform1Box.setBounds (oscArea.removeFromTop (30).reduced (10));
     waveform2Box.setBounds (oscArea.removeFromTop (30).reduced (10));
-    osc2LevelSlider.setBounds (oscArea.removeFromLeft (45));
-    osc2DetuneSlider.setBounds (oscArea.removeFromLeft (45));
-    subLevelSlider.setBounds (oscArea.removeFromLeft (45));
-    noiseLevelSlider.setBounds (oscArea.removeFromLeft (45));
+    osc2LevelSlider.setBounds (oscArea.removeFromLeft (40));
+    osc2DetuneSlider.setBounds (oscArea.removeFromLeft (40));
+    subLevelSlider.setBounds (oscArea.removeFromLeft (40));
+    noiseLevelSlider.setBounds (oscArea.removeFromLeft (40));
     
-    // Filter Section (Stage 7) - НОВАЯ СЕКЦИЯ
-    auto filterArea = area.removeFromLeft (200);
+    // Filter Section
+    auto filterArea = area.removeFromLeft (180);
     filterTypeBox.setBounds (filterArea.removeFromTop (30).reduced (10));
-    filterCutoffSlider.setBounds (filterArea.removeFromLeft (50));
-    filterResonanceSlider.setBounds (filterArea.removeFromLeft (50));
-    filterDriveSlider.setBounds (filterArea.removeFromLeft (50));
-    filterKeyTrackSlider.setBounds (filterArea.removeFromLeft (50));
+    filterCutoffSlider.setBounds (filterArea.removeFromLeft (45));
+    filterResonanceSlider.setBounds (filterArea.removeFromLeft (45));
+    filterDriveSlider.setBounds (filterArea.removeFromLeft (45));
+    filterKeyTrackSlider.setBounds (filterArea.removeFromLeft (45));
     
-    // Envelope Section
-    auto envArea = area.removeFromLeft (280);
-    attackSlider.setBounds (envArea.removeFromLeft (70));
-    decaySlider.setBounds (envArea.removeFromLeft (70));
-    sustainSlider.setBounds (envArea.removeFromLeft (70));
-    releaseSlider.setBounds (envArea.removeFromLeft (70));
+    // Modulation Section (Stage 8)
+    auto modArea = area.removeFromLeft (160);
+    lfoWaveformBox.setBounds (modArea.removeFromTop (30).reduced (10));
+    lfoRateSlider.setBounds (modArea.removeFromLeft (40));
+    lfoDepthSlider.setBounds (modArea.removeFromLeft (40));
+    filterEnvAmountSlider.setBounds (modArea.removeFromLeft (40));
+    filterAttackSlider.setBounds (modArea.removeFromLeft (40));
     
-    // Analog + Master Section
-    auto analogArea = area.removeFromLeft (140);
-    analogDriftSlider.setBounds (analogArea.removeFromLeft (45));
-    masterDriveSlider.setBounds (analogArea.removeFromLeft (45));
-    volumeSlider.setBounds (analogArea.removeFromLeft (50));
+    // Envelope Section (Amp + Filter)
+    auto envArea = area.removeFromLeft (320);
+    attackSlider.setBounds (envArea.removeFromLeft (40));
+    decaySlider.setBounds (envArea.removeFromLeft (40));
+    sustainSlider.setBounds (envArea.removeFromLeft (40));
+    releaseSlider.setBounds (envArea.removeFromLeft (40));
+    filterDecaySlider.setBounds (envArea.removeFromLeft (40));
+    filterSustainSlider.setBounds (envArea.removeFromLeft (40));
+    filterReleaseSlider.setBounds (envArea.removeFromLeft (40));
+    // filterAttack is in modArea to save space
+    
+    // Master Section
+    auto masterArea = area.removeFromLeft (120);
+    analogDriftSlider.setBounds (masterArea.removeFromLeft (40));
+    masterDriveSlider.setBounds (masterArea.removeFromLeft (40));
+    volumeSlider.setBounds (masterArea.removeFromLeft (40));
 }
