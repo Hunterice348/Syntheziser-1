@@ -32,30 +32,25 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    // Amp Envelope
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("attack", "Attack", 0.001f, 2.0f, 0.01f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("decay", "Decay", 0.001f, 2.0f, 0.1f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("sustain", "Sustain", 0.0f, 1.0f, 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("release", "Release", 0.001f, 3.0f, 0.1f));
     
-    // Mixer / Oscillators
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("volume", "Volume", 0.0f, 1.0f, 0.8f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Level", "Osc 2 Level", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Detune", "Osc 2 Detune", -12.0f, 12.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("subLevel", "Sub Level", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("noiseLevel", "Noise Level", 0.0f, 1.0f, 0.0f));
     
-    // Analog Modeling
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("analogDrift", "Analog Drift", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("masterDrive", "Master Drive", 0.0f, 1.0f, 0.0f));
     
-    // Filter Engine
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterCutoff", "Filter Cutoff", 0.0f, 1.0f, 0.8f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterResonance", "Filter Resonance", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDrive", "Filter Drive", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterKeyTrack", "Key Track", 0.0f, 1.0f, 0.5f));
     
-    // Modulation Engine (Stage 8)
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterAttack", "Filter Attack", 0.001f, 2.0f, 0.01f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDecay", "Filter Decay", 0.001f, 2.0f, 0.1f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterSustain", "Filter Sustain", 0.0f, 1.0f, 0.5f));
@@ -64,6 +59,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoRate", "LFO Rate", 0.1f, 20.0f, 2.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoDepth", "LFO Depth", 0.0f, 1.0f, 0.0f));
+    
+    // MODULATION MATRIX (Stage 9)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToPitch", "LFO -> Pitch", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToCutoff", "LFO -> Cutoff", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("modEnvToPitch", "Env -> Pitch", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("modVelToCutoff", "Vel -> Cutoff", 0.0f, 1.0f, 0.0f));
     
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1", "Osc 1 Waveform", waveforms, 0));
@@ -87,6 +88,7 @@ void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samples
     
     filterL.reset();
     filterR.reset();
+    currentModWheel = 0.0f;
     
     for (auto& voice : voices)
     {
@@ -157,6 +159,12 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     Waveform currentLfoWaveform = static_cast<Waveform> (juce::jlimit (0, 3, lfoWfIdx));
     bool lfoIsSH = (lfoWfIdx == 4);
     
+    // Modulation Matrix Params
+    float modLfoToPitch = parameters.getRawParameterValue ("modLfoToPitch")->load();
+    float modLfoToCutoff = parameters.getRawParameterValue ("modLfoToCutoff")->load();
+    float modEnvToPitch = parameters.getRawParameterValue ("modEnvToPitch")->load();
+    float modVelToCutoff = parameters.getRawParameterValue ("modVelToCutoff")->load();
+    
     smoothedDrive.setTargetValue (masterDrive);
     smoothedCutoff.setTargetValue (filterCutoff);
     smoothedResonance.setTargetValue (filterResonance);
@@ -186,10 +194,18 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     for (const auto metadata : midiMessages)
     {
         auto msg = metadata.getMessage();
-        if (msg.isNoteOn() && msg.getVelocity() > 0)
+        if (msg.isController())
+        {
+            if (msg.getControllerNumber() == 1) // Mod Wheel
+            {
+                currentModWheel = msg.getControllerValue() / 127.0f;
+            }
+        }
+        else if (msg.isNoteOn() && msg.getVelocity() > 0)
         {
             int note = msg.getNoteNumber();
             float freq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
+            float vel = msg.getVelocity() / 127.0f;
             
             int voiceIndex = -1;
             for (int i = 0; i < MAX_VOICES; ++i)
@@ -197,8 +213,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             
             if (voiceIndex == -1) voiceIndex = 0;
                 
-            // ⚠️ ЗДЕСЬ ДОЛЖНО БЫТЬ 5 АРГУМЕНТОВ:
-            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate);
+            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate, vel);
             voices[voiceIndex].midiNote = note;
             lastNotePlayed = note;
         }
@@ -240,32 +255,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     continue;
                 }
 
-                float osc1 = generateWaveform ((float)voices[v].phase1, currentWaveform1);
-                voices[v].phase1 += voices[v].phaseInc1;
-                if (voices[v].phase1 >= 1.0) voices[v].phase1 -= 1.0;
-
-                float osc2 = 0.0f;
-                if (osc2Level > 0.0f)
-                {
-                    osc2 = generateWaveform ((float)voices[v].phase2, currentWaveform2);
-                    voices[v].phase2 += voices[v].phaseInc2;
-                    if (voices[v].phase2 >= 1.0) voices[v].phase2 -= 1.0;
-                }
-
-                float sub = 0.0f;
-                if (subLevel > 0.0f)
-                {
-                    sub = (voices[v].phaseSub < 0.5f) ? 1.0f : -1.0f;
-                    voices[v].phaseSub += voices[v].phaseIncSub;
-                    if (voices[v].phaseSub >= 1.0) voices[v].phaseSub -= 1.0;
-                }
-
-                float noise = 0.0f;
-                if (noiseLevel > 0.0f)
-                {
-                    noise = generateNoise (voices[v].noiseState);
-                }
-
                 // LFO calculation
                 float lfoValue = 0.0f;
                 if (lfoIsSH)
@@ -278,23 +267,65 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     }
                     lfoValue = voices[v].lfoSHValue;
                 }
-                else if (lfoDepth > 0.0f)
+                else if (lfoDepth > 0.0f || modLfoToPitch > 0.0f || modLfoToCutoff > 0.0f)
                 {
                     lfoValue = generateWaveform ((float)voices[v].lfoPhase, currentLfoWaveform);
                     voices[v].lfoPhase += voices[v].lfoPhaseInc;
                     if (voices[v].lfoPhase >= 1.0f) voices[v].lfoPhase -= 1.0f;
                 }
 
-                // Modulate cutoff
-                float modAmount = (fEnv * fEnvAmount) + (lfoValue * lfoDepth);
+                // --- MODULATION MATRIX APPLICATION ---
+                // 1. LFO -> Pitch
+                float pitchMod = lfoValue * modLfoToPitch * 0.05f; // ±5% max pitch modulation
+                
+                // 2. Envelope -> Pitch
+                pitchMod += (fEnv - 0.5f) * modEnvToPitch * 0.05f;
+
+                // 3. Velocity -> Cutoff
+                float velMod = (voices[v].velocity - 0.5f) * modVelToCutoff * 0.5f;
+
+                // 4. Mod Wheel -> Cutoff
+                float wheelMod = (currentModWheel - 0.5f) * 0.5f; // Simple routing for demonstration
+
+                // Apply pitch modulation to phase increment
+                float modulatedPhaseInc1 = voices[v].phaseInc1 * (1.0f + pitchMod);
+                float modulatedPhaseInc2 = voices[v].phaseInc2 * (1.0f + pitchMod);
+                float modulatedPhaseIncSub = voices[v].phaseIncSub * (1.0f + pitchMod);
+
+                float osc1 = generateWaveform ((float)voices[v].phase1, currentWaveform1);
+                voices[v].phase1 += modulatedPhaseInc1;
+                if (voices[v].phase1 >= 1.0) voices[v].phase1 -= 1.0;
+
+                float osc2 = 0.0f;
+                if (osc2Level > 0.0f)
+                {
+                    osc2 = generateWaveform ((float)voices[v].phase2, currentWaveform2);
+                    voices[v].phase2 += modulatedPhaseInc2;
+                    if (voices[v].phase2 >= 1.0) voices[v].phase2 -= 1.0;
+                }
+
+                float sub = 0.0f;
+                if (subLevel > 0.0f)
+                {
+                    sub = (voices[v].phaseSub < 0.5f) ? 1.0f : -1.0f;
+                    voices[v].phaseSub += modulatedPhaseIncSub;
+                    if (voices[v].phaseSub >= 1.0) voices[v].phaseSub -= 1.0;
+                }
+
+                float noise = 0.0f;
+                if (noiseLevel > 0.0f)
+                {
+                    noise = generateNoise (voices[v].noiseState);
+                }
+
+                // Modulate cutoff with LFO, Velocity, and Mod Wheel
+                float modAmount = (fEnv * fEnvAmount) + (lfoValue * lfoDepth) + (lfoValue * modLfoToCutoff) + velMod + wheelMod;
                 float modulatedCutoff = juce::jlimit (0.0f, 1.0f, baseCutoff + modAmount);
 
                 float oscMix = (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * noiseLevel)) * env;
                 
-                // --- ФИЛЬТР ---
                 float filtered = filter.process (oscMix, modulatedCutoff, currentResonance, filterDrive, currentFilterType);
 
-                // Master Saturation
                 float driveMultiplier = 1.0f + (currentDrive * 4.0f);
                 float saturatedMix = std::tanh (filtered * driveMultiplier);
 
