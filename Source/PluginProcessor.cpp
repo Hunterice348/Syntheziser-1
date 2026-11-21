@@ -1,8 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-const int HuntericeAbyssAudioProcessor::drumMidiNotes[NUM_DRUMS];
-
 HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       parameters (*this, nullptr, "PARAMETERS", createParameterLayout())
@@ -234,13 +232,11 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 const int note = msg.getNoteNumber();
                 const float vel = msg.getVelocity() / 127.0f;
 
-                // === DRUM MACHINE TRIGGER ===
                 bool isDrum = false;
                 for (int d = 0; d < NUM_DRUMS; ++d)
                 {
                     if (note == drumMidiNotes[d])
                     {
-                        const juce::String prefix = juce::StringArray { "kick", "snare", "hi_hat", "clap", "tom", "perc" }[d];
                         const float lvl   = sm[DrumVol + 2 + d * 4].next();
                         const float tune  = sm[DrumVol + 3 + d * 4].next();
                         const float decay = sm[DrumVol + 4 + d * 4].next();
@@ -401,7 +397,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             mixR += s * v.panR;
         }
 
-        // === DRUM MACHINE RENDER ===
         float drumL = 0.0f, drumR = 0.0f;
         for (int d = 0; d < NUM_DRUMS; ++d)
         {
