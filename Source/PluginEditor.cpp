@@ -1,9 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-// ============================================================
-// AbyssLookAndFeel
-// ============================================================
 AbyssLookAndFeel::AbyssLookAndFeel()
 {
     setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xFFB41E28));
@@ -81,9 +78,6 @@ void AbyssLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, b
     g.fillPath (arrow);
 }
 
-// ============================================================
-// Editor Constructor
-// ============================================================
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
@@ -123,11 +117,14 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSlider (osc2LevelSlider); setupSlider (osc2DetuneSlider);
     setupSlider (subLevelSlider); setupSlider (noiseLevelSlider);
     setupSlider (unisonSpreadSlider);
+    setupSlider (unisonVoicesSlider); setupSlider (pwmWidthSlider);
     setupLabel (osc2LevelLabel, "OSC2 LVL"); addAndMakeVisible (osc2LevelLabel);
     setupLabel (osc2DetuneLabel, "OSC2 DET"); addAndMakeVisible (osc2DetuneLabel);
     setupLabel (subLevelLabel, "SUB LVL"); addAndMakeVisible (subLevelLabel);
     setupLabel (noiseLevelLabel, "NOISE"); addAndMakeVisible (noiseLevelLabel);
-    setupLabel (unisonSpreadLabel, "UNISON"); addAndMakeVisible (unisonSpreadLabel);
+    setupLabel (unisonSpreadLabel, "DETUNE"); addAndMakeVisible (unisonSpreadLabel);
+    setupLabel (unisonVoicesLabel, "VOICES"); addAndMakeVisible (unisonVoicesLabel);
+    setupLabel (pwmWidthLabel, "PWM"); addAndMakeVisible (pwmWidthLabel);
 
     waveform1Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     waveform2Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
@@ -324,6 +321,10 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     fxBypassAtt = std::make_unique<ButtonAttachment> (parameters, "fxBypass", fxBypassButton);
     unisonSpreadAtt = std::make_unique<Attachment> (parameters, "unisonSpread", unisonSpreadSlider);
     macroMorphAtt = std::make_unique<Attachment> (parameters, "macroMorph", macroMorphSlider);
+    
+    unisonVoicesAtt = std::make_unique<Attachment> (parameters, "unisonVoices", unisonVoicesSlider);
+    pwmWidthAtt = std::make_unique<Attachment> (parameters, "pwmWidth", pwmWidthSlider);
+    
     wf1Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform1", waveform1Box);
     wf2Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform2", waveform2Box);
     filterTypeAtt = std::make_unique<ComboBoxAttachment> (parameters, "filterType", filterTypeBox);
@@ -394,6 +395,7 @@ void HuntericeAbyssAudioProcessorEditor::applyScale (float newScale)
                     &delayTimeSlider, &delayFeedbackSlider, &delayMixSlider,
                     &reverbDecaySlider, &reverbMixSlider,
                     &unisonSpreadSlider, &macroMorphSlider,
+                    &unisonVoicesSlider, &pwmWidthSlider,
                     &drumVolSlider, &drumDriveSlider,
                     &kickLvlSlider, &kickTuneSlider, &kickDecaySlider, &kickToneSlider,
                     &snareLvlSlider, &snareTuneSlider, &snareDecaySlider, &snareToneSlider,
@@ -466,7 +468,7 @@ void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
     auto drumArea = area.removeFromTop ((int)(200 * s));
     auto fxArea = area.removeFromTop ((int)(180 * s));
 
-    auto oscArea = synthArea.removeFromLeft ((int)(180 * s));
+    auto oscArea = synthArea.removeFromLeft ((int)(220 * s));
     g.setColour (juce::Colour (0xFF2A1E1E)); g.fillRect (oscArea);
     g.setColour (juce::Colour (0xFFB41E28)); g.drawRect (oscArea, 1);
 
@@ -509,7 +511,8 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     auto fxArea = area.removeFromTop ((int)(180 * s));
     auto bottomArea = area;
 
-    auto oscArea = synthArea.removeFromLeft ((int)(180 * s));
+    // === OSCILLATORS (расширенная секция) ===
+    auto oscArea = synthArea.removeFromLeft ((int)(220 * s));
     sectionOsc.setBounds (oscArea.removeFromTop ((int)(22 * s)));
     waveform1Label.setBounds (oscArea.removeFromTop ((int)(14 * s)));
     waveform1Box.setBounds (oscArea.removeFromTop ((int)(22 * s)).reduced ((int)(10 * s), (int)(2 * s)));
@@ -520,7 +523,9 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     osc2DetuneLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); osc2DetuneSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
     subLevelLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); subLevelSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
     noiseLevelLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); noiseLevelSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
+    unisonVoicesLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); unisonVoicesSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
     unisonSpreadLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); unisonSpreadSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
+    pwmWidthLabel.setBounds (oscArea.removeFromTop ((int)(12 * s))); pwmWidthSlider.setBounds (oscArea.removeFromTop ((int)(46 * s)));
 
     auto filterArea = synthArea.removeFromLeft ((int)(180 * s));
     sectionFilter.setBounds (filterArea.removeFromTop ((int)(22 * s)));
