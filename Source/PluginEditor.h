@@ -34,7 +34,6 @@ private:
     juce::Slider reverbDecaySlider, reverbMixSlider;
     juce::ToggleButton fxBypassButton;
 
-    // STAGE 12
     juce::Slider unisonSpreadSlider;
     juce::Slider macroMorphSlider;
 
