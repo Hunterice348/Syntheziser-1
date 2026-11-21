@@ -23,6 +23,17 @@ private:
     juce::Slider filterAttackSlider, filterDecaySlider, filterSustainSlider, filterReleaseSlider, filterEnvAmountSlider;
     juce::Slider lfoRateSlider, lfoDepthSlider;
     juce::Slider modLfoToPitchSlider, modLfoToCutoffSlider, modEnvToPitchSlider, modVelToCutoffSlider;
+    
+    // Semi-Modular Patch Bay (Stage 10)
+    juce::ComboBox patch1SrcBox, patch1DstBox;
+    juce::Slider patch1AmtSlider;
+    juce::ComboBox patch2SrcBox, patch2DstBox;
+    juce::Slider patch2AmtSlider;
+    juce::ComboBox patch3SrcBox, patch3DstBox;
+    juce::Slider patch3AmtSlider;
+    juce::ComboBox patch4SrcBox, patch4DstBox;
+    juce::Slider patch4AmtSlider;
+
     juce::ComboBox waveform1Box, waveform2Box, filterTypeBox, lfoWaveformBox;
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -35,6 +46,16 @@ private:
     std::unique_ptr<Attachment> filterAttackAtt, filterDecayAtt, filterSustainAtt, filterReleaseAtt, filterEnvAmountAtt;
     std::unique_ptr<Attachment> lfoRateAtt, lfoDepthAtt;
     std::unique_ptr<Attachment> modLfoToPitchAtt, modLfoToCutoffAtt, modEnvToPitchAtt, modVelToCutoffAtt;
+    
+    std::unique_ptr<ComboBoxAttachment> patch1SrcAtt, patch1DstAtt;
+    std::unique_ptr<Attachment> patch1AmtAtt;
+    std::unique_ptr<ComboBoxAttachment> patch2SrcAtt, patch2DstAtt;
+    std::unique_ptr<Attachment> patch2AmtAtt;
+    std::unique_ptr<ComboBoxAttachment> patch3SrcAtt, patch3DstAtt;
+    std::unique_ptr<Attachment> patch3AmtAtt;
+    std::unique_ptr<ComboBoxAttachment> patch4SrcAtt, patch4DstAtt;
+    std::unique_ptr<Attachment> patch4AmtAtt;
+
     std::unique_ptr<ComboBoxAttachment> wf1Att, wf2Att, filterTypeAtt, lfoWaveformAtt;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HuntericeAbyssAudioProcessorEditor)
