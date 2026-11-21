@@ -19,6 +19,12 @@ HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
         voice.adsrParams.sustain = 0.5f;
         voice.adsrParams.release = 0.1f;
         voice.adsr.setParameters (voice.adsrParams);
+        
+        voice.filterAdsrParams.attack = 0.01f;
+        voice.filterAdsrParams.decay = 0.1f;
+        voice.filterAdsrParams.sustain = 0.5f;
+        voice.filterAdsrParams.release = 0.1f;
+        voice.filterAdsr.setParameters (voice.filterAdsrParams);
     }
 }
 
@@ -26,7 +32,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    // ADSR
+    // Amp Envelope
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("attack", "Attack", 0.001f, 2.0f, 0.01f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("decay", "Decay", 0.001f, 2.0f, 0.1f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("sustain", "Sustain", 0.0f, 1.0f, 0.5f));
@@ -43,11 +49,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("analogDrift", "Analog Drift", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("masterDrive", "Master Drive", 0.0f, 1.0f, 0.0f));
     
-    // FILTER ENGINE (Stage 7)
+    // Filter Engine
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterCutoff", "Filter Cutoff", 0.0f, 1.0f, 0.8f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterResonance", "Filter Resonance", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDrive", "Filter Drive", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterKeyTrack", "Key Track", 0.0f, 1.0f, 0.5f));
+    
+    // Modulation Engine (Stage 8)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterAttack", "Filter Attack", 0.001f, 2.0f, 0.01f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDecay", "Filter Decay", 0.001f, 2.0f, 0.1f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterSustain", "Filter Sustain", 0.0f, 1.0f, 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterRelease", "Filter Release", 0.001f, 3.0f, 0.1f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterEnvAmount", "Filter Env Amt", -1.0f, 1.0f, 0.5f));
+    
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoRate", "LFO Rate", 0.1f, 20.0f, 2.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoDepth", "LFO Depth", 0.0f, 1.0f, 0.0f));
     
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1", "Osc 1 Waveform", waveforms, 0));
@@ -55,6 +71,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     
     juce::StringArray filterTypes = { "LP 12dB", "LP 24dB", "High Pass", "Band Pass" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("filterType", "Filter Type", filterTypes, 0));
+    
+    juce::StringArray lfoWaveforms = { "Sine", "Triangle", "Saw", "Square", "S&H" };
+    params.push_back (std::make_unique<juce::AudioParameterChoice> ("lfoWaveform", "LFO Waveform", lfoWaveforms, 0));
 
     return { params.begin(), params.end() };
 }
@@ -72,6 +91,7 @@ void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samples
     for (auto& voice : voices)
     {
         voice.adsr.setSampleRate (sampleRate);
+        voice.filterAdsr.setSampleRate (sampleRate);
         voice.active = false;
     }
 }
@@ -125,6 +145,18 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     float filterKeyTrack = parameters.getRawParameterValue ("filterKeyTrack")->load();
     int filterTypeIdx = static_cast<int> (parameters.getRawParameterValue ("filterType")->load());
     
+    float fAttack = parameters.getRawParameterValue ("filterAttack")->load();
+    float fDecay = parameters.getRawParameterValue ("filterDecay")->load();
+    float fSustain = parameters.getRawParameterValue ("filterSustain")->load();
+    float fRelease = parameters.getRawParameterValue ("filterRelease")->load();
+    float fEnvAmount = parameters.getRawParameterValue ("filterEnvAmount")->load();
+    
+    float lfoRate = parameters.getRawParameterValue ("lfoRate")->load();
+    float lfoDepth = parameters.getRawParameterValue ("lfoDepth")->load();
+    int lfoWfIdx = static_cast<int> (parameters.getRawParameterValue ("lfoWaveform")->load());
+    Waveform currentLfoWaveform = static_cast<Waveform> (juce::jlimit (0, 3, lfoWfIdx));
+    bool lfoIsSH = (lfoWfIdx == 4);
+    
     smoothedDrive.setTargetValue (masterDrive);
     smoothedCutoff.setTargetValue (filterCutoff);
     smoothedResonance.setTargetValue (filterResonance);
@@ -143,6 +175,12 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         voice.adsrParams.sustain = sustain;
         voice.adsrParams.release = release;
         voice.adsr.setParameters (voice.adsrParams);
+        
+        voice.filterAdsrParams.attack = fAttack;
+        voice.filterAdsrParams.decay = fDecay;
+        voice.filterAdsrParams.sustain = fSustain;
+        voice.filterAdsrParams.release = fRelease;
+        voice.filterAdsr.setParameters (voice.filterAdsrParams);
     }
 
     for (const auto metadata : midiMessages)
@@ -159,9 +197,9 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             
             if (voiceIndex == -1) voiceIndex = 0;
                 
-            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift);
+            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate);
             voices[voiceIndex].midiNote = note;
-            lastNotePlayed = note; // Для key tracking
+            lastNotePlayed = note;
         }
         else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
         {
@@ -173,8 +211,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     }
     midiMessages.clear();
 
-    // Key Tracking: смещение cutoff в зависимости от последней сыгранной ноты
-    // Нота 60 (C4) = 0 смещение, каждая октава = +0.1 к cutoff
     float keyTrackOffset = ((float)lastNotePlayed - 60.0f) / 120.0f * filterKeyTrack;
 
     for (int channel = 0; channel < totalNumOutputChannels; ++channel)
@@ -187,7 +223,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         {
             float mix = 0.0f;
             float currentDrive = smoothedDrive.getNextValue();
-            float currentCutoff = juce::jlimit (0.0f, 1.0f, smoothedCutoff.getNextValue() + keyTrackOffset);
+            float baseCutoff = juce::jlimit (0.0f, 1.0f, smoothedCutoff.getNextValue() + keyTrackOffset);
             float currentResonance = smoothedResonance.getNextValue();
 
             for (int v = 0; v < MAX_VOICES; ++v)
@@ -195,7 +231,9 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 if (!voices[v].active) continue;
 
                 float env = voices[v].adsr.getNextSample();
-                if (env <= 0.0f && !voices[v].adsr.isActive())
+                float fEnv = voices[v].filterAdsr.getNextSample();
+                
+                if (env <= 0.0f && !voices[v].adsr.isActive() && !voices[v].filterAdsr.isActive())
                 {
                     voices[v].active = false;
                     continue;
@@ -227,23 +265,48 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     noise = generateNoise (voices[v].noiseState);
                 }
 
-                mix += (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * noiseLevel)) * env;
+                // LFO calculation
+                float lfoValue = 0.0f;
+                if (lfoIsSH)
+                {
+                    voices[v].lfoPhase += voices[v].lfoPhaseInc;
+                    if (voices[v].lfoPhase >= 1.0f)
+                    {
+                        voices[v].lfoPhase -= 1.0f;
+                        voices[v].lfoSHValue = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f;
+                    }
+                    lfoValue = voices[v].lfoSHValue;
+                }
+                else if (lfoDepth > 0.0f)
+                {
+                    lfoValue = generateWaveform ((float)voices[v].lfoPhase, currentLfoWaveform);
+                    voices[v].lfoPhase += voices[v].lfoPhaseInc;
+                    if (voices[v].lfoPhase >= 1.0f) voices[v].lfoPhase -= 1.0f;
+                }
+
+                // Modulate cutoff
+                float modAmount = (fEnv * fEnvAmount) + (lfoValue * lfoDepth);
+                float modulatedCutoff = juce::jlimit (0.0f, 1.0f, baseCutoff + modAmount);
+
+                float oscMix = (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * noiseLevel)) * env;
+                
+                // --- ФИЛЬТР ---
+                float filtered = filter.process (oscMix, modulatedCutoff, currentResonance, filterDrive, currentFilterType);
+
+                // Master Saturation
+                float driveMultiplier = 1.0f + (currentDrive * 4.0f);
+                float saturatedMix = std::tanh (filtered * driveMultiplier);
+
+                float compensation = 1.0f / std::tanh (driveMultiplier);
+                if (driveMultiplier > 1.0f)
+                {
+                    saturatedMix *= compensation;
+                }
+
+                mix += saturatedMix;
             }
 
-            // --- ФИЛЬТР (Stage 7) ---
-            float filtered = filter.process (mix, currentCutoff, currentResonance, filterDrive, currentFilterType);
-
-            // Master Saturation (после фильтра)
-            float driveMultiplier = 1.0f + (currentDrive * 4.0f);
-            float saturatedMix = std::tanh (filtered * driveMultiplier);
-
-            float compensation = 1.0f / std::tanh (driveMultiplier);
-            if (driveMultiplier > 1.0f)
-            {
-                saturatedMix *= compensation;
-            }
-
-            channelData[sample] = saturatedMix * volume;
+            channelData[sample] = mix * volume;
         }
     }
 }
