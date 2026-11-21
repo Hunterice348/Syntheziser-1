@@ -197,6 +197,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             
             if (voiceIndex == -1) voiceIndex = 0;
                 
+            // ⚠️ ЗДЕСЬ ДОЛЖНО БЫТЬ 5 АРГУМЕНТОВ:
             voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate);
             voices[voiceIndex].midiNote = note;
             lastNotePlayed = note;
