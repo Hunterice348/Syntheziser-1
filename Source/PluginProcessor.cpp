@@ -17,7 +17,6 @@ HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
         voice.adsrParams.attack = 0.01f; voice.adsrParams.decay = 0.1f;
         voice.adsrParams.sustain = 0.5f; voice.adsrParams.release = 0.1f;
         voice.adsr.setParameters (voice.adsrParams);
-        
         voice.filterAdsrParams.attack = 0.01f; voice.filterAdsrParams.decay = 0.1f;
         voice.filterAdsrParams.sustain = 0.5f; voice.filterAdsrParams.release = 0.1f;
         voice.filterAdsr.setParameters (voice.filterAdsrParams);
@@ -79,14 +78,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbDecay", "Reverb Decay", 0.0f, 0.95f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbMix", "Reverb Mix", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterBool> ("fxBypass", "FX Bypass", false));
+
+    // --- STAGE 12: UNISON & MACRO ---
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("unisonSpread", "Unison Spread", 0.0f, 0.05f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("macroMorph", "Macro: Clean <-> Dirty", 0.0f, 1.0f, 0.0f));
     
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1", "Osc 1 Waveform", waveforms, 0));
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform2", "Osc 2 Waveform", waveforms, 1));
-    
     juce::StringArray filterTypes = { "LP 12dB", "LP 24dB", "High Pass", "Band Pass" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("filterType", "Filter Type", filterTypes, 0));
-    
     juce::StringArray lfoWaveforms = { "Sine", "Triangle", "Saw", "Square", "S&H" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("lfoWaveform", "LFO Waveform", lfoWaveforms, 0));
 
@@ -99,19 +100,10 @@ void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samples
     smoothedDrive.reset (sampleRate, 0.05);
     smoothedCutoff.reset (sampleRate, 0.02);
     smoothedResonance.reset (sampleRate, 0.02);
-    
-    filterL.reset(); filterR.reset();
-    delayL.reset(); delayR.reset();
-    chorusL.reset(); chorusR.reset();
-    reverbL.reset(); reverbR.reset();
+    filterL.reset(); filterR.reset(); delayL.reset(); delayR.reset();
+    chorusL.reset(); chorusR.reset(); reverbL.reset(); reverbR.reset();
     currentModWheel = 0.0f;
-    
-    for (auto& voice : voices)
-    {
-        voice.adsr.setSampleRate (sampleRate);
-        voice.filterAdsr.setSampleRate (sampleRate);
-        voice.active = false;
-    }
+    for (auto& voice : voices) { voice.adsr.setSampleRate (sampleRate); voice.filterAdsr.setSampleRate (sampleRate); voice.active = false; }
 }
 
 void HuntericeAbyssAudioProcessor::releaseResources() {}
@@ -137,8 +129,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear (i, 0, buffer.getNumSamples());
+    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i) buffer.clear (i, 0, buffer.getNumSamples());
 
     float attack = parameters.getRawParameterValue ("attack")->load();
     float decay = parameters.getRawParameterValue ("decay")->load();
@@ -187,6 +178,10 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     float reverbDecay = parameters.getRawParameterValue ("reverbDecay")->load();
     float reverbMix = parameters.getRawParameterValue ("reverbMix")->load();
     bool fxBypass = parameters.getRawParameterValue ("fxBypass")->load();
+
+    // STAGE 12 PARAMETERS
+    float unisonSpread = parameters.getRawParameterValue ("unisonSpread")->load();
+    float macroMorph = parameters.getRawParameterValue ("macroMorph")->load();
     
     for (int i = 0; i < NUM_PATCH_CABLES; ++i)
     {
@@ -199,7 +194,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     smoothedDrive.setTargetValue (masterDrive);
     smoothedCutoff.setTargetValue (filterCutoff);
     smoothedResonance.setTargetValue (filterResonance);
-    
     currentFilterType = static_cast<FilterType> (juce::jlimit (0, 3, filterTypeIdx));
     
     int wf1 = static_cast<int> (parameters.getRawParameterValue ("waveform1")->load());
@@ -212,7 +206,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         voice.adsrParams.attack = attack; voice.adsrParams.decay = decay;
         voice.adsrParams.sustain = sustain; voice.adsrParams.release = release;
         voice.adsr.setParameters (voice.adsrParams);
-        
         voice.filterAdsrParams.attack = fAttack; voice.filterAdsrParams.decay = fDecay;
         voice.filterAdsrParams.sustain = fSustain; voice.filterAdsrParams.release = fRelease;
         voice.filterAdsr.setParameters (voice.filterAdsrParams);
@@ -221,32 +214,23 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     for (const auto metadata : midiMessages)
     {
         auto msg = metadata.getMessage();
-        if (msg.isController() && msg.getControllerNumber() == 1)
-        {
-            currentModWheel = msg.getControllerValue() / 127.0f;
-        }
+        if (msg.isController() && msg.getControllerNumber() == 1) currentModWheel = msg.getControllerValue() / 127.0f;
         else if (msg.isNoteOn() && msg.getVelocity() > 0)
         {
             int note = msg.getNoteNumber();
             float freq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
             float vel = msg.getVelocity() / 127.0f;
-            
             int voiceIndex = -1;
-            for (int i = 0; i < MAX_VOICES; ++i)
-                if (!voices[i].active) { voiceIndex = i; break; }
-            
+            for (int i = 0; i < MAX_VOICES; ++i) if (!voices[i].active) { voiceIndex = i; break; }
             if (voiceIndex == -1) voiceIndex = 0;
-                
-            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate, vel);
+            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate, vel, unisonSpread);
             voices[voiceIndex].midiNote = note;
             lastNotePlayed = note;
         }
         else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
         {
             int note = msg.getNoteNumber();
-            for (int i = 0; i < MAX_VOICES; ++i)
-                if (voices[i].active && voices[i].midiNote == note)
-                    voices[i].noteOff();
+            for (int i = 0; i < MAX_VOICES; ++i) if (voices[i].active && voices[i].midiNote == note) voices[i].noteOff();
         }
     }
     midiMessages.clear();
@@ -268,32 +252,27 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         {
             float mix = 0.0f;
             float currentDrive = smoothedDrive.getNextValue();
-            float baseCutoff = juce::jlimit (0.0f, 1.0f, smoothedCutoff.getNextValue() + keyTrackOffset);
+            
+            // MACRO MORPH: чем выше macroMorph, тем выше cutoff, distortion и noise
+            float morphedCutoff = juce::jlimit (0.0f, 1.0f, smoothedCutoff.getNextValue() + keyTrackOffset + (macroMorph * 0.6f));
+            float morphedDistDrive = distDrive + (macroMorph * 0.8f);
+            float morphedNoise = noiseLevel + (macroMorph * 0.5f);
+            
             float currentResonance = smoothedResonance.getNextValue();
             float masterVolMod = 0.0f;
 
             for (int v = 0; v < MAX_VOICES; ++v)
             {
                 if (!voices[v].active) continue;
-
                 float env = voices[v].adsr.getNextSample();
                 float fEnv = voices[v].filterAdsr.getNextSample();
-                
-                if (env <= 0.0f && !voices[v].adsr.isActive() && !voices[v].filterAdsr.isActive())
-                {
-                    voices[v].active = false;
-                    continue;
-                }
+                if (env <= 0.0f && !voices[v].adsr.isActive() && !voices[v].filterAdsr.isActive()) { voices[v].active = false; continue; }
 
                 float lfoValue = 0.0f;
                 if (lfoIsSH)
                 {
                     voices[v].lfoPhase += voices[v].lfoPhaseInc;
-                    if (voices[v].lfoPhase >= 1.0f)
-                    {
-                        voices[v].lfoPhase -= 1.0f;
-                        voices[v].lfoSHValue = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f;
-                    }
+                    if (voices[v].lfoPhase >= 1.0f) { voices[v].lfoPhase -= 1.0f; voices[v].lfoSHValue = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f; }
                     lfoValue = voices[v].lfoSHValue;
                 }
                 else if (lfoDepth > 0.0f || modLfoToPitch > 0.0f || modLfoToCutoff > 0.0f)
@@ -355,7 +334,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 }
 
                 float noise = 0.0f;
-                if (noiseLevel > 0.0f) noise = generateNoise (voices[v].noiseState);
+                if (morphedNoise > 0.0f) noise = generateNoise (voices[v].noiseState);
 
                 for (int c = 0; c < NUM_PATCH_CABLES; ++c)
                 {
@@ -364,16 +343,15 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     if (patchCables[c].source == ModSource::Osc1Audio) srcVal = osc1;
                     else if (patchCables[c].source == ModSource::NoiseAudio) srcVal = noise;
                     else continue;
-
                     float modAmount = srcVal * patchCables[c].amount;
                     if (patchCables[c].destination == ModDest::FilterCutoff) voiceCutoffMod += modAmount * 0.5f;
                 }
 
-                float modulatedCutoff = juce::jlimit (0.0f, 1.0f, baseCutoff + voiceCutoffMod);
-                float oscMix = (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * noiseLevel)) * env;
+                float modulatedCutoff = juce::jlimit (0.0f, 1.0f, morphedCutoff + voiceCutoffMod);
+                float oscMix = (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * morphedNoise)) * env;
                 
                 float filtered = filter.process (oscMix, modulatedCutoff, currentResonance, filterDrive, currentFilterType);
-                float driveMultiplier = 1.0f + (currentDrive * 4.0f);
+                float driveMultiplier = 1.0f + (morphedDistDrive * 4.0f);
                 float saturatedMix = std::tanh (filtered * driveMultiplier);
                 float compensation = 1.0f / std::tanh (driveMultiplier);
                 if (driveMultiplier > 1.0f) saturatedMix *= compensation;
@@ -394,51 +372,20 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     if (distMultiplier > 1.0f) distorted *= compDist;
                     fxSignal = fxSignal * (1.0f - distMix) + distorted * distMix;
                 }
-
-                if (chorusMix > 0.0f)
-                {
-                    // ✅ ИСПРАВЛЕНО: добавлен 5-й параметр currentSampleRate
-                    fxSignal = chorus.process (fxSignal, chorusRate, chorusDepth, chorusMix, currentSampleRate);
-                }
-
+                if (chorusMix > 0.0f) fxSignal = chorus.process (fxSignal, chorusRate, chorusDepth, chorusMix, currentSampleRate);
                 if (delayMix > 0.0f)
                 {
                     float delayed = delay.process (fxSignal, delaySamples, delayFeedback);
                     fxSignal = fxSignal * (1.0f - delayMix) + delayed * delayMix;
                 }
-
-                if (reverbMix > 0.0f)
-                {
-                    fxSignal = reverb.process (fxSignal, reverbDecay, reverbMix);
-                }
+                if (reverbMix > 0.0f) fxSignal = reverb.process (fxSignal, reverbDecay, reverbMix);
             }
-
             channelData[sample] = fxSignal;
         }
     }
 }
 
-juce::AudioProcessorEditor* HuntericeAbyssAudioProcessor::createEditor()
-{
-    return new HuntericeAbyssAudioProcessorEditor (*this, parameters);
-}
-
-void HuntericeAbyssAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
-{
-    auto state = parameters.copyState();
-    std::unique_ptr<juce::XmlElement> xml (state.createXml());
-    copyXmlToBinary (*xml, destData);
-}
-
-void HuntericeAbyssAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
-{
-    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState.get() != nullptr)
-        if (xmlState->hasTagName (parameters.state.getType()))
-            parameters.replaceState (juce::ValueTree::fromXml (*xmlState));
-}
-
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new HuntericeAbyssAudioProcessor();
-}
+juce::AudioProcessorEditor* HuntericeAbyssAudioProcessor::createEditor() { return new HuntericeAbyssAudioProcessorEditor (*this, parameters); }
+void HuntericeAbyssAudioProcessor::getStateInformation (juce::MemoryBlock& destData) { auto state = parameters.copyState(); std::unique_ptr<juce::XmlElement> xml (state.createXml()); copyXmlToBinary (*xml, destData); }
+void HuntericeAbyssAudioProcessor::setStateInformation (const void* data, int sizeInBytes) { std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes)); if (xmlState.get() != nullptr) if (xmlState->hasTagName (parameters.state.getType())) parameters.replaceState (juce::ValueTree::fromXml (*xmlState)); }
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new HuntericeAbyssAudioProcessor(); }
