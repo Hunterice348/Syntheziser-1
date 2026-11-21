@@ -1,9 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-// ============================================================
-// AbyssLookAndFeel - кастомный стиль в стиле Volca Drum
-// ============================================================
 AbyssLookAndFeel::AbyssLookAndFeel()
 {
     setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xFFB41E28));
@@ -81,14 +78,15 @@ void AbyssLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, b
     g.fillPath (arrow);
 }
 
-// ============================================================
-// Editor Constructor
-// ============================================================
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
     setLookAndFeel (&abyssLF);
-    setSize ((int) BASE_WIDTH, (int) BASE_HEIGHT);
+    
+    scaleFactor = detectOptimalScale();
+    setSize ((int) (BASE_WIDTH * scaleFactor), (int) (BASE_HEIGHT * scaleFactor));
+    setResizable (true, true);
+    getConstrainer()->setMinimumSize ((int)(BASE_WIDTH * MIN_SCALE), (int)(BASE_HEIGHT * MIN_SCALE));
 
     auto setupSlider = [this](juce::Slider& s) {
         s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -269,16 +267,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSectionLabel (sectionMaster, "MASTER"); addAndMakeVisible (sectionMaster);
     setupSectionLabel (sectionDrum, "DRUM MACHINE"); addAndMakeVisible (sectionDrum);
 
-    scaleBox.addItem ("50%", 1);
-    scaleBox.addItem ("75%", 2);
-    scaleBox.addItem ("100%", 3);
-    scaleBox.addItem ("125%", 4);
-    scaleBox.addItem ("150%", 5);
-    scaleBox.setSelectedId (3);
-    scaleBox.addListener (this);
-    setupCombo (scaleBox);
-    setupLabel (scaleLabel, "UI SCALE"); addAndMakeVisible (scaleLabel);
-
     attackAtt = std::make_unique<Attachment> (parameters, "attack", attackSlider);
     decayAtt = std::make_unique<Attachment> (parameters, "decay", decaySlider);
     sustainAtt = std::make_unique<Attachment> (parameters, "sustain", sustainSlider);
@@ -368,24 +356,82 @@ HuntericeAbyssAudioProcessorEditor::~HuntericeAbyssAudioProcessorEditor()
     setLookAndFeel (nullptr);
 }
 
-void HuntericeAbyssAudioProcessorEditor::comboBoxChanged (juce::ComboBox* comboBoxThatHasChanged)
+float HuntericeAbyssAudioProcessorEditor::detectOptimalScale()
 {
-    if (comboBoxThatHasChanged == &scaleBox)
+    auto display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+    if (display == nullptr) return 1.0f;
+    
+    float dpi = display->dpi;
+    if (dpi < 120.0f) return 1.0f;
+    if (dpi < 160.0f) return 1.25f;
+    if (dpi < 200.0f) return 1.5f;
+    return 2.0f;
+}
+
+void HuntericeAbyssAudioProcessorEditor::applyScale (float newScale)
+{
+    newScale = juce::jlimit (MIN_SCALE, MAX_SCALE, newScale);
+    if (std::abs (newScale - scaleFactor) < 0.001f) return;
+    
+    scaleFactor = newScale;
+    
+    for (auto* s : {&attackSlider, &decaySlider, &sustainSlider, &releaseSlider, &volumeSlider,
+                    &osc2LevelSlider, &osc2DetuneSlider, &subLevelSlider, &noiseLevelSlider,
+                    &analogDriftSlider, &masterDriveSlider,
+                    &filterCutoffSlider, &filterResonanceSlider, &filterDriveSlider, &filterKeyTrackSlider,
+                    &filterAttackSlider, &filterDecaySlider, &filterSustainSlider, &filterReleaseSlider, &filterEnvAmountSlider,
+                    &lfoRateSlider, &lfoDepthSlider,
+                    &modLfoToPitchSlider, &modLfoToCutoffSlider, &modEnvToPitchSlider, &modVelToCutoffSlider,
+                    &patch1AmtSlider, &patch2AmtSlider, &patch3AmtSlider, &patch4AmtSlider,
+                    &distDriveSlider, &distMixSlider,
+                    &chorusRateSlider, &chorusDepthSlider, &chorusMixSlider,
+                    &delayTimeSlider, &delayFeedbackSlider, &delayMixSlider,
+                    &reverbDecaySlider, &reverbMixSlider,
+                    &unisonSpreadSlider, &macroMorphSlider,
+                    &drumVolSlider, &drumDriveSlider,
+                    &kickLvlSlider, &kickTuneSlider, &kickDecaySlider, &kickToneSlider,
+                    &snareLvlSlider, &snareTuneSlider, &snareDecaySlider, &snareToneSlider,
+                    &hatLvlSlider, &hatTuneSlider, &hatDecaySlider, &hatToneSlider,
+                    &clapLvlSlider, &clapTuneSlider, &clapDecaySlider, &clapToneSlider,
+                    &tomLvlSlider, &tomTuneSlider, &tomDecaySlider, &tomToneSlider,
+                    &percLvlSlider, &percTuneSlider, &percDecaySlider, &percToneSlider})
     {
-        int id = scaleBox.getSelectedId();
-        float newScale = 1.0f;
-        if (id == 1) newScale = 0.5f;
-        else if (id == 2) newScale = 0.75f;
-        else if (id == 3) newScale = 1.0f;
-        else if (id == 4) newScale = 1.25f;
-        else if (id == 5) newScale = 1.5f;
-        
-        if (newScale != scaleFactor)
-        {
-            scaleFactor = newScale;
-            setSize ((int) (BASE_WIDTH * scaleFactor), (int) (BASE_HEIGHT * scaleFactor));
-            resized();
-        }
+        s->setTextBoxStyle (juce::Slider::TextBoxBelow, false, (int)(60 * scaleFactor), (int)(18 * scaleFactor));
+    }
+    
+    setSize ((int) (BASE_WIDTH * scaleFactor), (int) (BASE_HEIGHT * scaleFactor));
+    resized();
+}
+
+void HuntericeAbyssAudioProcessorEditor::showScaleMenu()
+{
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&abyssLF);
+    
+    auto addItem = [&](float scale, const juce::String& label) {
+        menu.addItem (juce::roundToInt (scale * 100), label, true, std::abs (scaleFactor - scale) < 0.001f);
+    };
+    
+    addItem (0.5f,  "50%");
+    addItem (0.75f, "75%");
+    addItem (1.0f,  "100%  (default)");
+    addItem (1.25f, "125%");
+    addItem (1.5f,  "150%");
+    addItem (2.0f,  "200%");
+    
+    menu.addSeparator();
+    menu.addItem (999, "Auto-detect from screen");
+    
+    auto chosen = menu.show();
+    if (chosen == 999) applyScale (detectOptimalScale());
+    else if (chosen > 0) applyScale (chosen / 100.0f);
+}
+
+void HuntericeAbyssAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isRightButtonDown() && e.y < 40)
+    {
+        showScaleMenu();
     }
 }
 
@@ -393,35 +439,42 @@ void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xFF1E1E24));
 
+    auto s = scaleFactor;
     g.setColour (juce::Colours::white);
-    g.setFont (juce::Font (22.0f * scaleFactor, juce::Font::bold));
-    g.drawText ("HUNTERICE ABYSS", getLocalBounds().removeFromTop ((int)(32 * scaleFactor)), juce::Justification::centred);
+    g.setFont (juce::Font (22.0f * s, juce::Font::bold));
+    g.drawText ("HUNTERICE ABYSS", getLocalBounds().removeFromTop ((int)(32 * s)), juce::Justification::centred);
 
     g.setColour (juce::Colour (0xFFB41E28));
-    g.fillRect (0, (int)(32 * scaleFactor), getWidth(), 2);
+    g.fillRect (0, (int)(32 * s), getWidth(), 2);
 
-    auto area = getLocalBounds().reduced ((int)(10 * scaleFactor)).withTrimmedTop ((int)(36 * scaleFactor));
-    auto synthArea = area.removeFromTop ((int)(320 * scaleFactor));
-    auto drumArea = area.removeFromTop ((int)(200 * scaleFactor));
-    auto fxArea = area.removeFromTop ((int)(180 * scaleFactor));
+    g.setColour (juce::Colour (0x80FFFFFF));
+    g.setFont (juce::Font (10.0f * s, juce::Font::italic));
+    juce::String hint = "Right-click title for UI scale (" + juce::String (int (scaleFactor * 100)) + "%)";
+    g.drawText (hint, getLocalBounds().removeFromTop ((int)(32 * s)).removeFromRight ((int)(300 * s)).reduced (10, 0),
+                juce::Justification::centredRight);
 
-    auto oscArea = synthArea.removeFromLeft ((int)(180 * scaleFactor));
+    auto area = getLocalBounds().reduced ((int)(10 * s)).withTrimmedTop ((int)(36 * s));
+    auto synthArea = area.removeFromTop ((int)(320 * s));
+    auto drumArea = area.removeFromTop ((int)(200 * s));
+    auto fxArea = area.removeFromTop ((int)(180 * s));
+
+    auto oscArea = synthArea.removeFromLeft ((int)(180 * s));
     g.setColour (juce::Colour (0xFF2A1E1E)); g.fillRect (oscArea);
     g.setColour (juce::Colour (0xFFB41E28)); g.drawRect (oscArea, 1);
 
-    auto filterArea = synthArea.removeFromLeft ((int)(180 * scaleFactor));
+    auto filterArea = synthArea.removeFromLeft ((int)(180 * s));
     g.setColour (juce::Colour (0xFF1E1E2A)); g.fillRect (filterArea);
     g.setColour (juce::Colour (0xFF4169E1)); g.drawRect (filterArea, 1);
 
-    auto envArea = synthArea.removeFromLeft ((int)(280 * scaleFactor));
+    auto envArea = synthArea.removeFromLeft ((int)(280 * s));
     g.setColour (juce::Colour (0xFF1E2A1E)); g.fillRect (envArea);
     g.setColour (juce::Colour (0xFF3CB371)); g.drawRect (envArea, 1);
 
-    auto lfoArea = synthArea.removeFromLeft ((int)(140 * scaleFactor));
+    auto lfoArea = synthArea.removeFromLeft ((int)(140 * s));
     g.setColour (juce::Colour (0xFF2A2A1E)); g.fillRect (lfoArea);
     g.setColour (juce::Colour (0xFFDAA520)); g.drawRect (lfoArea, 1);
 
-    auto modArea = synthArea.removeFromLeft ((int)(160 * scaleFactor));
+    auto modArea = synthArea.removeFromLeft ((int)(160 * s));
     g.setColour (juce::Colour (0xFF2A1E2A)); g.fillRect (modArea);
     g.setColour (juce::Colour (0xFF9370DB)); g.drawRect (modArea, 1);
 
@@ -585,9 +638,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     fxBypassButton.setBounds (fxArea.reduced ((int)(30 * s), (int)(40 * s)));
 
     sectionMaster.setBounds (bottomArea.removeFromTop ((int)(22 * s)));
-    auto masterTop = bottomArea.removeFromTop ((int)(12 * s));
-    scaleLabel.setBounds (masterTop.removeFromRight ((int)(100 * s)));
-    scaleBox.setBounds (masterTop.removeFromRight ((int)(80 * s)));
     macroMorphLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); macroMorphSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
     analogDriftLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); analogDriftSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
     masterDriveLabel.setBounds (bottomArea.removeFromTop ((int)(12 * s))); masterDriveSlider.setBounds (bottomArea.removeFromTop ((int)(50 * s)));
