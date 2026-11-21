@@ -103,6 +103,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
         p.push_back (std::make_unique<juce::AudioParameterFloat> (prefix + "Tone",  drumNames[i] + " TONE",  0.0f, 1.0f, 0.5f));
     }
 
+    // === STEP SEQUENCER ===
+    p.push_back (std::make_unique<juce::AudioParameterBool> ("seqActive", "Sequencer Active", false));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("seqSwing", "Sequencer Swing", 0.0f, 1.0f, 0.0f));
+
+    for (int pad = 0; pad < NUM_DRUMS; ++pad)
+    {
+        for (int step = 0; step < SEQ_STEPS; ++step)
+        {
+            juce::String id = "step" + juce::String (pad) + "_" + juce::String (step);
+            juce::String name = drumNames[pad] + " Step " + juce::String (step + 1);
+            p.push_back (std::make_unique<juce::AudioParameterBool> (id, name, false));
+        }
+    }
+
     return { p.begin(), p.end() };
 }
 
@@ -114,6 +128,7 @@ void HuntericeAbyssAudioProcessor::resetDsp()
     chorusL.reset(); chorusR.reset();
     reverbL.reset(); reverbR.reset();
     normGain = 1.0f;
+    sequencer.reset();
 }
 
 void HuntericeAbyssAudioProcessor::allNotesOff (bool force)
@@ -185,10 +200,22 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     const int unisonVoices = juce::jlimit (1, MAX_UNISON, (int) parameters.getRawParameterValue ("unisonVoices")->load());
     const float pwmWidth = parameters.getRawParameterValue ("pwmWidth")->load();
-    
     const float glideAmt = parameters.getRawParameterValue ("glide")->load();
     const float velToAmt = parameters.getRawParameterValue ("velToAmp")->load();
     const double glideCoef = (glideAmt > 0.001f) ? std::exp (-1.0 / (sr * (0.005 + (double) glideAmt * 0.6))) : 0.0;
+
+    // === SEQUENCER ===
+    sequencer.active = parameters.getRawParameterValue ("seqActive")->load() > 0.5f;
+    sequencer.swing = parameters.getRawParameterValue ("seqSwing")->load();
+    for (int pad = 0; pad < NUM_DRUMS; ++pad)
+        for (int step = 0; step < SEQ_STEPS; ++step)
+            sequencer.steps[pad][step] = parameters.getRawParameterValue ("step" + juce::String (pad) + "_" + juce::String (step))->load() > 0.5f;
+
+    double bpm = 120.0;
+    if (auto ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+            if (pos->getBpm()) bpm = *pos->getBpm();
+    sequencer.update (sr, bpm);
 
     juce::ADSR::Parameters ap, fp;
     ap.attack  = parameters.getRawParameterValue ("attack")->load();
@@ -225,6 +252,25 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     for (int i = 0; i < numSamples; ++i)
     {
+        // === STEP SEQUENCER TRIGGER ===
+        for (int d = 0; d < NUM_DRUMS; ++d)
+        {
+            if (sequencer.shouldTrigger (d))
+            {
+                const int base[6] = { KickLvl, SnareLvl, HatLvl, ClapLvl, TomLvl, PercLvl };
+                const int b = base[d];
+                const float lvl  = sm[b + 0].v.getCurrentValue();
+                const float tune = sm[b + 1].v.getCurrentValue();
+                const float dec  = sm[b + 2].v.getCurrentValue();
+                const float ton  = sm[b + 3].v.getCurrentValue();
+                float body = 0.5f, pitchAmt = 1.0f, snap = 0.0f;
+                if (d == 0) { body = sm[KickBody].v.getCurrentValue();  pitchAmt = sm[KickPitchAmt].v.getCurrentValue(); }
+                if (d == 1) { body = sm[SnareBody].v.getCurrentValue(); snap     = sm[SnareSnap].v.getCurrentValue(); }
+                drums[(size_t) d].trigger (1.0f, lvl, tune, dec, ton, body, pitchAmt, snap);
+            }
+        }
+        sequencer.advance();
+
         while (hasNext && msgPos <= i)
         {
             if (msg.isController())
@@ -253,18 +299,15 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 for (int d = 0; d < NUM_DRUMS; ++d)
                 {
                     if (note != drumMidiNotes[d]) continue;
-
                     const int base[6] = { KickLvl, SnareLvl, HatLvl, ClapLvl, TomLvl, PercLvl };
                     const int b = base[d];
                     const float lvl  = sm[b + 0].v.getCurrentValue();
                     const float tune = sm[b + 1].v.getCurrentValue();
                     const float dec  = sm[b + 2].v.getCurrentValue();
                     const float ton  = sm[b + 3].v.getCurrentValue();
-
                     float body = 0.5f, pitchAmt = 1.0f, snap = 0.0f;
                     if (d == 0) { body = sm[KickBody].v.getCurrentValue();  pitchAmt = sm[KickPitchAmt].v.getCurrentValue(); }
                     if (d == 1) { body = sm[SnareBody].v.getCurrentValue(); snap     = sm[SnareSnap].v.getCurrentValue(); }
-
                     drums[(size_t) d].trigger (vel, lvl, tune, dec, ton, body, pitchAmt, snap);
                     isDrum = true;
                     break;
@@ -296,7 +339,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                         }
                     }
                     if (idx < 0) idx = 0;
-                    
                     voices[(size_t) idx].start (note, (float) juce::MidiMessage::getMidiNoteInHertz (note), sr, osc2Detune, analogDrift, lfoRate, vel, unison, rng, ++noteSerial);
                     voices[(size_t) idx].keyTrackMul = std::pow (2.0f, (float) (note - 60) * 0.0833333f * kt);
                 }
@@ -392,9 +434,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 const float spread = (v.unisonCount > 1) ? ((0.002f + pv[Unison] * 0.6f) * (j - (v.unisonCount - 1) * 0.5f)) : 0.0f;
                 float detuneFactor = 1.0f + spread + (pitchMod + v.audioPitchMod) * 0.1f;
                 float dt = (float) juce::jlimit (0.0, 0.45, v.inc1 * (double) detuneFactor * (double) bendMul);
-                
                 osc1Sum += osc ((float)v.unisonPhase[j], dt, wf1, pwmWidth);
-                
                 v.unisonPhase[j] += dt;
                 if (v.unisonPhase[j] >= 1.0) v.unisonPhase[j] -= std::floor (v.unisonPhase[j]);
             }
@@ -482,8 +522,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             if (dm > 0.0001f)
             {
                 const float d = 1.0f + pv[DistDrive] * 15.0f;
-                float dL = outL * d;
-                float dR = outR * d;
+                float dL = outL * d; float dR = outR * d;
                 dL = std::tanh (dL) * 0.7f + dL / (1.0f + std::abs (dL)) * 0.3f;
                 dR = std::tanh (dR) * 0.7f + dR / (1.0f + std::abs (dR)) * 0.3f;
                 const float comp = 1.0f / std::sqrt (d);
