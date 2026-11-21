@@ -45,8 +45,10 @@ private:
     static constexpr int DELAY_MAX  = 192000;
     static constexpr int CHORUS_MAX = 8192;
     static constexpr int NUM_DRUMS  = 6;
+    static constexpr int SEQ_STEPS  = 16;
 
     double sr = 44100.0;
+    double currentBpm = 120.0;
     juce::Random rng;
 
     enum Sm { Volume, Osc2Level, Osc2Detune, SubLevel, NoiseLevel, MasterDrive,
@@ -152,9 +154,7 @@ private:
             const float ang = (pan + 1.0f) * 0.7853981f;
             panL = std::cos (ang); panR = std::sin (ang);
             filter.reset(); ampEnv.noteOn(); filterEnv.noteOn();
-            
-            for (int i = 0; i < MAX_UNISON; ++i)
-                unisonPhase[i] = phase1;
+            for (int i = 0; i < MAX_UNISON; ++i) unisonPhase[i] = phase1;
         }
         void stop (bool sustainPedal)
         {
@@ -190,27 +190,17 @@ private:
         {
             active = true;
             level = vel * lvl;
-            tune = tn;
-            decay = dec;
-            tone = ton;
-            bodyTone = body;
-            pitchEnvAmt = pitch;
-            snap = snp;
-            phase = 0.0;
-            pitchEnv = 1.0;
-            ampEnvPhase = 0.0;
-            ampEnvVal = 1.0f;
-            clapBurstPhase = 0.0f;
-            clapBurstCount = 0;
-            hpState = 0.0f;
-            hpIn = 0.0f;
-            lpState = 0.0f;
+            tune = tn; decay = dec; tone = ton;
+            bodyTone = body; pitchEnvAmt = pitch; snap = snp;
+            phase = 0.0; pitchEnv = 1.0;
+            ampEnvPhase = 0.0; ampEnvVal = 1.0f;
+            clapBurstPhase = 0.0f; clapBurstCount = 0;
+            hpState = 0.0f; hpIn = 0.0f; lpState = 0.0f;
         }
 
         float process (double sampleRate)
         {
             if (! active) return 0.0f;
-
             float out = 0.0f;
             const float decayRate = 1.0f / (float) (sampleRate * juce::jlimit (0.05, 3.0, (double) decay));
             const float pitchDecayRate = 1.0f / (float) (sampleRate * 0.05);
@@ -256,8 +246,7 @@ private:
                     const float g = std::tan (juce::MathConstants<float>::pi * cutoffClamped / (float) sampleRate);
                     const float a1 = g / (1.0f + g);
                     float y = a1 * (hpState + nz - hpIn);
-                    hpState = y;
-                    hpIn = nz;
+                    hpState = y; hpIn = nz;
                     out = y;
                     break;
                 }
@@ -327,7 +316,47 @@ private:
     };
 
     std::array<DrumVoice, NUM_DRUMS> drums;
-    static constexpr int drumMidiNotes[NUM_DRUMS] = { 36, 38, 42, 45, 48, 51 };
+    static constexpr int drumMidiNotes[NUM_DRUMS] = { 36, 38, 42, 45, 46, 47 };
+
+    // === STEP SEQUENCER ===
+    struct StepSequencer
+    {
+        bool steps[NUM_DRUMS][SEQ_STEPS] = {{false}};
+        int currentStep = 0;
+        int samplesPerStep = 0;
+        int sampleCounter = 0;
+        bool active = false;
+        float swing = 0.0f;
+
+        void update(double sampleRate, double bpm)
+        {
+            double samplesPerBeat = (sampleRate * 60.0) / bpm;
+            samplesPerStep = juce::jmax(1, (int)(samplesPerBeat / 4.0));
+        }
+
+        bool shouldTrigger(int pad) const
+        {
+            return active && steps[pad][currentStep];
+        }
+
+        void advance()
+        {
+            sampleCounter++;
+            if (sampleCounter >= samplesPerStep)
+            {
+                sampleCounter = 0;
+                currentStep = (currentStep + 1) % SEQ_STEPS;
+            }
+        }
+
+        void reset()
+        {
+            currentStep = 0;
+            sampleCounter = 0;
+        }
+    };
+
+    StepSequencer sequencer;
 
     struct Delay
     {
@@ -387,7 +416,6 @@ private:
         int cp[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
         int al[4] { 225, 556, 441, 341 };
         int ap[4] { 0, 0, 0, 0 };
-        float cd[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
         float lp[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
 
         void prepare (double sampleRate)
@@ -403,7 +431,7 @@ private:
         {
             for (auto& x : c) x.fill (0.0f);
             for (auto& x : a) x.fill (0.0f);
-            for (int i = 0; i < 8; ++i) { cp[i] = 0; cd[i] = 0.0f; lp[i] = 0.0f; }
+            for (int i = 0; i < 8; ++i) { cp[i] = 0; lp[i] = 0.0f; }
             for (int i = 0; i < 4; ++i) ap[i] = 0;
         }
         float process (float in, float decay, float mix)
