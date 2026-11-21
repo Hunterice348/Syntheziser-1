@@ -186,7 +186,7 @@ private:
             lfoPhase = 0.0;
         }
         
-        // ⚠️ ДОБАВЛЕН ПАРАМЕТР sampleRate
+        // ⚠️ ДОБАВЛЕН 5-Й ПАРАМЕТР: sampleRate
         float process (float input, float rate, float depth, float mix, double sampleRate)
         {
             float lfoValue = std::sin (2.0f * juce::MathConstants<float>::pi * (float)lfoPhase);
