@@ -1,19 +1,39 @@
 #pragma once
 #include <JuceHeader.h>
 
+// Кастомный LookAndFeel в стиле Volca Drum / Monomachine
+class AbyssLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    AbyssLookAndFeel();
+    void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                          float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
+                          juce::Slider& slider) override;
+    void drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown,
+                      int buttonX, int buttonY, int buttonW, int buttonH,
+                      juce::ComboBox& box) override;
+};
+
 class HuntericeAbyssAudioProcessor;
 
-class HuntericeAbyssAudioProcessorEditor : public juce::AudioProcessorEditor
+class HuntericeAbyssAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                           private juce::ComboBox::Listener
 {
 public:
     HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor&, juce::AudioProcessorValueTreeState&);
     ~HuntericeAbyssAudioProcessorEditor() override;
     void paint (juce::Graphics&) override;
     void resized() override;
+    void comboBoxChanged (juce::ComboBox* comboBoxThatHasChanged) override;
 
 private:
     HuntericeAbyssAudioProcessor& audioProcessor;
     juce::AudioProcessorValueTreeState& parameters;
+
+    AbyssLookAndFeel abyssLF;
+    float scaleFactor = 1.0f;
+    static constexpr float BASE_WIDTH = 1400.0f;
+    static constexpr float BASE_HEIGHT = 820.0f;
 
     juce::Slider attackSlider, decaySlider, sustainSlider, releaseSlider, volumeSlider;
     juce::Slider osc2LevelSlider, osc2DetuneSlider, subLevelSlider, noiseLevelSlider;
@@ -39,7 +59,7 @@ private:
 
     juce::ComboBox waveform1Box, waveform2Box, filterTypeBox, lfoWaveformBox;
 
-    // DRUM MACHINE (Stage 14)
+    // DRUM MACHINE
     juce::Slider drumVolSlider, drumDriveSlider;
     juce::Slider kickLvlSlider, kickTuneSlider, kickDecaySlider, kickToneSlider;
     juce::Slider snareLvlSlider, snareTuneSlider, snareDecaySlider, snareToneSlider;
@@ -47,6 +67,9 @@ private:
     juce::Slider clapLvlSlider, clapTuneSlider, clapDecaySlider, clapToneSlider;
     juce::Slider tomLvlSlider, tomTuneSlider, tomDecaySlider, tomToneSlider;
     juce::Slider percLvlSlider, percTuneSlider, percDecaySlider, percToneSlider;
+
+    // SCALE SELECTOR
+    juce::ComboBox scaleBox;
 
     // LABELS
     juce::Label sectionOsc, sectionFilter, sectionEnv, sectionLfo;
@@ -78,6 +101,7 @@ private:
     juce::Label clapLvlLabel, clapTuneLabel, clapDecayLabel, clapToneLabel;
     juce::Label tomLvlLabel, tomTuneLabel, tomDecayLabel, tomToneLabel;
     juce::Label percLvlLabel, percTuneLabel, percDecayLabel, percToneLabel;
+    juce::Label scaleLabel;
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
