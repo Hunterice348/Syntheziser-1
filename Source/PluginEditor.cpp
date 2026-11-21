@@ -8,7 +8,15 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
 
     auto setupSlider = [](juce::Slider& s) {
         s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-        s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 50, 20);
+        s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 65, 20); 
+        
+        s.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white);
+        s.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xFF1E1E24));
+        s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        
+        s.setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xFFB41E28));
+        s.setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colour (0xFF5A5A64));
+        s.setColour (juce::Slider::thumbColourId, juce::Colours::white);
     };
 
     setupSlider (attackSlider); addAndMakeVisible (attackSlider);
@@ -60,7 +68,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSlider (reverbDecaySlider); addAndMakeVisible (reverbDecaySlider);
     setupSlider (reverbMixSlider); addAndMakeVisible (reverbMixSlider);
 
-    // STAGE 12 SLIDERS
     setupSlider (unisonSpreadSlider); addAndMakeVisible (unisonSpreadSlider);
     setupSlider (macroMorphSlider); addAndMakeVisible (macroMorphSlider);
 
@@ -240,7 +247,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     masterDriveSlider.setBounds (masterArea.removeFromLeft (33));
     volumeSlider.setBounds (masterArea.removeFromLeft (33));
 
-    // STAGE 12 LAYOUT
     auto stage12Area = getLocalBounds().reduced (15).removeFromBottom (80);
     unisonSpreadSlider.setBounds (stage12Area.removeFromLeft (100));
     macroMorphSlider.setBounds (stage12Area.removeFromLeft (150));
