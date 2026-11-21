@@ -4,7 +4,7 @@
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
-    setSize (1000, 480);
+    setSize (1050, 480);
 
     auto setupSlider = [](juce::Slider& s) {
         s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -38,6 +38,12 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
 
     setupSlider (lfoRateSlider); addAndMakeVisible (lfoRateSlider);
     setupSlider (lfoDepthSlider); addAndMakeVisible (lfoDepthSlider);
+
+    // Modulation Matrix Sliders (Stage 9)
+    setupSlider (modLfoToPitchSlider); addAndMakeVisible (modLfoToPitchSlider);
+    setupSlider (modLfoToCutoffSlider); addAndMakeVisible (modLfoToCutoffSlider);
+    setupSlider (modEnvToPitchSlider); addAndMakeVisible (modEnvToPitchSlider);
+    setupSlider (modVelToCutoffSlider); addAndMakeVisible (modVelToCutoffSlider);
 
     waveform1Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     waveform2Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
@@ -77,6 +83,11 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     lfoRateAtt = std::make_unique<Attachment> (parameters, "lfoRate", lfoRateSlider);
     lfoDepthAtt = std::make_unique<Attachment> (parameters, "lfoDepth", lfoDepthSlider);
     
+    modLfoToPitchAtt = std::make_unique<Attachment> (parameters, "modLfoToPitch", modLfoToPitchSlider);
+    modLfoToCutoffAtt = std::make_unique<Attachment> (parameters, "modLfoToCutoff", modLfoToCutoffSlider);
+    modEnvToPitchAtt = std::make_unique<Attachment> (parameters, "modEnvToPitch", modEnvToPitchSlider);
+    modVelToCutoffAtt = std::make_unique<Attachment> (parameters, "modVelToCutoff", modVelToCutoffSlider);
+    
     wf1Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform1", waveform1Box);
     wf2Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform2", waveform2Box);
     filterTypeAtt = std::make_unique<ComboBoxAttachment> (parameters, "filterType", filterTypeBox);
@@ -101,7 +112,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced (20).removeFromTop (320);
     
-    // Oscillator Section
     auto oscArea = area.removeFromLeft (160);
     waveform1Box.setBounds (oscArea.removeFromTop (30).reduced (10));
     waveform2Box.setBounds (oscArea.removeFromTop (30).reduced (10));
@@ -110,7 +120,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     subLevelSlider.setBounds (oscArea.removeFromLeft (40));
     noiseLevelSlider.setBounds (oscArea.removeFromLeft (40));
     
-    // Filter Section
     auto filterArea = area.removeFromLeft (180);
     filterTypeBox.setBounds (filterArea.removeFromTop (30).reduced (10));
     filterCutoffSlider.setBounds (filterArea.removeFromLeft (45));
@@ -118,7 +127,6 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     filterDriveSlider.setBounds (filterArea.removeFromLeft (45));
     filterKeyTrackSlider.setBounds (filterArea.removeFromLeft (45));
     
-    // Modulation Section (Stage 8)
     auto modArea = area.removeFromLeft (160);
     lfoWaveformBox.setBounds (modArea.removeFromTop (30).reduced (10));
     lfoRateSlider.setBounds (modArea.removeFromLeft (40));
@@ -126,18 +134,21 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     filterEnvAmountSlider.setBounds (modArea.removeFromLeft (40));
     filterAttackSlider.setBounds (modArea.removeFromLeft (40));
     
-    // Envelope Section (Amp + Filter)
-    auto envArea = area.removeFromLeft (320);
-    attackSlider.setBounds (envArea.removeFromLeft (40));
-    decaySlider.setBounds (envArea.removeFromLeft (40));
-    sustainSlider.setBounds (envArea.removeFromLeft (40));
-    releaseSlider.setBounds (envArea.removeFromLeft (40));
-    filterDecaySlider.setBounds (envArea.removeFromLeft (40));
-    filterSustainSlider.setBounds (envArea.removeFromLeft (40));
-    filterReleaseSlider.setBounds (envArea.removeFromLeft (40));
-    // filterAttack is in modArea to save space
+    // MODULATION MATRIX SECTION (Stage 9)
+    auto matrixArea = area.removeFromLeft (160);
+    matrixArea.removeFromTop (10); // Spacer
+    modLfoToPitchSlider.setBounds (matrixArea.removeFromLeft (40));
+    modLfoToCutoffSlider.setBounds (matrixArea.removeFromLeft (40));
+    modEnvToPitchSlider.setBounds (matrixArea.removeFromLeft (40));
+    modVelToCutoffSlider.setBounds (matrixArea.removeFromLeft (40));
     
-    // Master Section
+    auto envArea = area.removeFromLeft (200);
+    attackSlider.setBounds (envArea.removeFromLeft (50));
+    decaySlider.setBounds (envArea.removeFromLeft (50));
+    sustainSlider.setBounds (envArea.removeFromLeft (50));
+    releaseSlider.setBounds (envArea.removeFromLeft (50));
+    filterDecaySlider.setBounds (envArea.removeFromLeft (50)); // Compact layout
+    
     auto masterArea = area.removeFromLeft (120);
     analogDriftSlider.setBounds (masterArea.removeFromLeft (40));
     masterDriveSlider.setBounds (masterArea.removeFromLeft (40));
