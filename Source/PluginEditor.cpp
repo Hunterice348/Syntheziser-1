@@ -49,7 +49,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSlider (patch3AmtSlider); addAndMakeVisible (patch3AmtSlider);
     setupSlider (patch4AmtSlider); addAndMakeVisible (patch4AmtSlider);
 
-    // Effects Sliders (Stage 11)
     setupSlider (distDriveSlider); addAndMakeVisible (distDriveSlider);
     setupSlider (distMixSlider); addAndMakeVisible (distMixSlider);
     setupSlider (chorusRateSlider); addAndMakeVisible (chorusRateSlider);
@@ -143,7 +142,6 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     patch4DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch3Dst", patch4DstBox);
     patch4AmtAtt = std::make_unique<Attachment> (parameters, "patch3Amt", patch4AmtSlider);
 
-    // Effects Attachments
     distDriveAtt = std::make_unique<Attachment> (parameters, "distDrive", distDriveSlider);
     distMixAtt = std::make_unique<Attachment> (parameters, "distMix", distMixSlider);
     chorusRateAtt = std::make_unique<Attachment> (parameters, "chorusRate", chorusRateSlider);
@@ -240,11 +238,7 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     masterDriveSlider.setBounds (masterArea.removeFromLeft (33));
     volumeSlider.setBounds (masterArea.removeFromLeft (33));
 
-    // EFFECTS SECTION (Stage 11) - вторая строка интерфейса
     auto fxArea = getLocalBounds().reduced (15).removeFromTop (380).removeFromBottom (200);
-    
-    g.setColour (juce::Colour (0xFF2A2A32));
-    g.fillRect (fxArea);
     
     auto distArea = fxArea.removeFromLeft (150);
     distDriveSlider.setBounds (distArea.removeFromLeft (75));
