@@ -47,7 +47,7 @@ private:
 
     static constexpr int MAX_VOICES = 16;
     static constexpr int NUM_PATCH_CABLES = 4;
-    static constexpr int MAX_DELAY_SAMPLES = 192000; // 1 секунда при 192kHz
+    static constexpr int MAX_DELAY_SAMPLES = 192000;
     
     struct Voice
     {
@@ -172,6 +172,7 @@ private:
         }
     };
     
+    // ⚠️ ИСПРАВЛЕНИЕ: sampleRate теперь передаётся как параметр
     struct ChorusEffect
     {
         std::array<float, MAX_DELAY_SAMPLES> buffer {};
@@ -185,16 +186,15 @@ private:
             lfoPhase = 0.0;
         }
         
-        float process (float input, float rate, float depth, float mix)
+        // ⚠️ ДОБАВЛЕН ПАРАМЕТР sampleRate
+        float process (float input, float rate, float depth, float mix, double sampleRate)
         {
-            // LFO для модуляции задержки
             float lfoValue = std::sin (2.0f * juce::MathConstants<float>::pi * (float)lfoPhase);
-            lfoPhase += rate / currentSampleRate;
+            lfoPhase += rate / sampleRate;
             if (lfoPhase >= 1.0) lfoPhase -= 1.0;
             
-            // Базовая задержка + модуляция
-            float baseDelay = 0.01f * (float)currentSampleRate; // 10ms
-            float modDelay = baseDelay + lfoValue * depth * 0.005f * (float)currentSampleRate;
+            float baseDelay = 0.01f * (float)sampleRate;
+            float modDelay = baseDelay + lfoValue * depth * 0.005f * (float)sampleRate;
             
             int readPos = writePos - (int)modDelay;
             if (readPos < 0) readPos += MAX_DELAY_SAMPLES;
@@ -210,7 +210,6 @@ private:
     
     struct ReverbEffect
     {
-        // Простой алгоритмический ревербератор на основе 4 comb-фильтров
         std::array<float, 1200> comb1 {};
         std::array<float, 1600> comb2 {};
         std::array<float, 2000> comb3 {};
@@ -228,7 +227,6 @@ private:
         {
             float feedback = juce::jlimit (0.0f, 0.95f, decay);
             
-            // 4 параллельных comb-фильтра
             float out1 = comb1[pos1];
             comb1[pos1] = input + out1 * feedback;
             pos1 = (pos1 + 1) % comb1.size();
