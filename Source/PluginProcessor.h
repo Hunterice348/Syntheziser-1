@@ -145,7 +145,6 @@ private:
     
     SVFilter filterL, filterR;
 
-    // --- EFFECTS ENGINE (Stage 11) ---
     struct DelayLine
     {
         std::array<float, MAX_DELAY_SAMPLES> buffer {};
@@ -172,7 +171,6 @@ private:
         }
     };
     
-    // ⚠️ ИСПРАВЛЕНИЕ: sampleRate теперь передаётся как параметр
     struct ChorusEffect
     {
         std::array<float, MAX_DELAY_SAMPLES> buffer {};
@@ -186,7 +184,6 @@ private:
             lfoPhase = 0.0;
         }
         
-        // ⚠️ ДОБАВЛЕН 5-Й ПАРАМЕТР: sampleRate
         float process (float input, float rate, float depth, float mix, double sampleRate)
         {
             float lfoValue = std::sin (2.0f * juce::MathConstants<float>::pi * (float)lfoPhase);
