@@ -2,388 +2,464 @@
 #include "PluginEditor.h"
 
 HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
-     : AudioProcessor (BusesProperties()
-                 #if ! JucePlugin_IsMidiEffect
-                  #if ! JucePlugin_IsSynth
-                   .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                  #endif
-                   .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-                 #endif
-                   ),
-       parameters (*this, nullptr, "PARAMETERS", createParameterLayout())
+    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      parameters (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
-    for (auto& voice : voices)
-    {
-        voice.adsrParams.attack = 0.01f; voice.adsrParams.decay = 0.1f;
-        voice.adsrParams.sustain = 0.5f; voice.adsrParams.release = 0.1f;
-        voice.adsr.setParameters (voice.adsrParams);
-        voice.filterAdsrParams.attack = 0.01f; voice.filterAdsrParams.decay = 0.1f;
-        voice.filterAdsrParams.sustain = 0.5f; voice.filterAdsrParams.release = 0.1f;
-        voice.filterAdsr.setParameters (voice.filterAdsrParams);
-    }
+}
+
+bool HuntericeAbyssAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
+{
+    const auto& out = l.getMainOutputChannelSet();
+    return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo();
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor::createParameterLayout()
 {
-    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
+    const juce::StringArray waves  { "Sine", "Saw", "Square", "Triangle" };
+    const juce::StringArray ftypes { "LP 12dB", "LP 24dB", "High Pass", "Band Pass" };
+    const juce::StringArray lwaves { "Sine", "Triangle", "Saw", "Square", "S&H" };
+    const juce::StringArray srcs   { "None", "LFO", "Filter Env", "Velocity", "Mod Wheel", "Osc 1 (Audio)", "Noise (Audio)" };
+    const juce::StringArray dsts   { "None", "Filter Cutoff", "Osc 1 Pitch", "Osc 2 Pitch", "Master Vol", "Filter Res" };
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("attack", "Attack", 0.001f, 2.0f, 0.01f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("decay", "Decay", 0.001f, 2.0f, 0.1f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("sustain", "Sustain", 0.0f, 1.0f, 0.5f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("release", "Release", 0.001f, 3.0f, 0.1f));
-    
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("volume", "Volume", 0.0f, 1.0f, 0.8f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Level", "Osc 2 Level", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Detune", "Osc 2 Detune", -12.0f, 12.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("subLevel", "Sub Level", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("noiseLevel", "Noise Level", 0.0f, 1.0f, 0.0f));
-    
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("analogDrift", "Analog Drift", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("masterDrive", "Master Drive", 0.0f, 1.0f, 0.0f));
-    
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterCutoff", "Filter Cutoff", 0.0f, 1.0f, 0.8f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterResonance", "Filter Resonance", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDrive", "Filter Drive", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterKeyTrack", "Key Track", 0.0f, 1.0f, 0.5f));
-    
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterAttack", "Filter Attack", 0.001f, 2.0f, 0.01f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDecay", "Filter Decay", 0.001f, 2.0f, 0.1f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterSustain", "Filter Sustain", 0.0f, 1.0f, 0.5f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterRelease", "Filter Release", 0.001f, 3.0f, 0.1f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("filterEnvAmount", "Filter Env Amt", -1.0f, 1.0f, 0.5f));
-    
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoRate", "LFO Rate", 0.1f, 20.0f, 2.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoDepth", "LFO Depth", 0.0f, 1.0f, 0.0f));
-    
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToPitch", "LFO -> Pitch", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToCutoff", "LFO -> Cutoff", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("modEnvToPitch", "Env -> Pitch", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("modVelToCutoff", "Vel -> Cutoff", 0.0f, 1.0f, 0.0f));
-    
-    for (int i = 0; i < NUM_PATCH_CABLES; ++i)
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("attack",  "Attack",  0.001f, 2.0f, 0.01f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("decay",   "Decay",   0.001f, 2.0f, 0.10f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("sustain", "Sustain", 0.0f,   1.0f, 0.50f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("release", "Release", 0.001f, 3.0f, 0.10f));
+
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("volume",      "Volume",       0.0f, 1.0f, 0.8f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Level",   "Osc 2 Level",  0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("osc2Detune",  "Osc 2 Detune", -12.0f, 12.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("subLevel",    "Sub Level",    0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("noiseLevel",  "Noise Level",  0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("analogDrift", "Analog Drift", 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("masterDrive", "Master Drive", 0.0f, 1.0f, 0.0f));
+
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterCutoff",    "Filter Cutoff", 0.0f, 1.0f, 0.8f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterResonance", "Resonance",     0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDrive",     "Filter Drive",  0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterKeyTrack",  "Key Track",     0.0f, 1.0f, 0.5f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterAttack",    "Filter Attack", 0.001f, 2.0f, 0.01f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterDecay",     "Filter Decay",  0.001f, 2.0f, 0.10f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterSustain",   "Filter Sustain",0.0f, 1.0f, 0.50f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterRelease",   "Filter Release",0.001f, 3.0f, 0.10f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("filterEnvAmount", "Filter Env Amt",-1.0f, 1.0f, 0.5f));
+
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoRate",  "LFO Rate",  0.1f, 20.0f, 2.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("lfoDepth", "LFO Depth", 0.0f, 1.0f,  0.0f));
+
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToPitch",  "LFO -> Pitch",  0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("modLfoToCutoff", "LFO -> Cutoff", 0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("modEnvToPitch",  "Env -> Pitch",  0.0f, 1.0f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("modVelToCutoff", "Vel -> Cutoff", 0.0f, 1.0f, 0.0f));
+
+    for (int i = 0; i < NUM_PATCH; ++i)
     {
-        params.push_back (std::make_unique<juce::AudioParameterChoice> ("patch" + juce::String(i) + "Src", "Patch " + juce::String(i+1) + " Source", juce::StringArray { "None", "LFO", "Filter Env", "Velocity", "Mod Wheel", "Osc 1 (Audio)", "Noise (Audio)" }, 0));
-        params.push_back (std::make_unique<juce::AudioParameterChoice> ("patch" + juce::String(i) + "Dst", "Patch " + juce::String(i+1) + " Dest", juce::StringArray { "None", "Filter Cutoff", "Osc 1 Pitch", "Osc 2 Pitch", "Master Vol", "Filter Res" }, 0));
-        params.push_back (std::make_unique<juce::AudioParameterFloat> ("patch" + juce::String(i) + "Amt", "Patch " + juce::String(i+1) + " Amount", 0.0f, 1.0f, 0.5f));
+        p.push_back (std::make_unique<juce::AudioParameterChoice> ("patch" + juce::String (i) + "Src", "Patch " + juce::String (i + 1) + " Source", srcs, 0));
+        p.push_back (std::make_unique<juce::AudioParameterChoice> ("patch" + juce::String (i) + "Dst", "Patch " + juce::String (i + 1) + " Dest",   dsts, 0));
+        p.push_back (std::make_unique<juce::AudioParameterFloat>  ("patch" + juce::String (i) + "Amt", "Patch " + juce::String (i + 1) + " Amount", 0.0f, 1.0f, 0.5f));
     }
-    
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("distDrive", "Dist Drive", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("distMix", "Dist Mix", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusRate", "Chorus Rate", 0.1f, 5.0f, 1.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusDepth", "Chorus Depth", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusMix", "Chorus Mix", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("delayTime", "Delay Time", 0.01f, 1.0f, 0.3f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("delayFeedback", "Delay Feedback", 0.0f, 0.9f, 0.3f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("delayMix", "Delay Mix", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbDecay", "Reverb Decay", 0.0f, 0.95f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbMix", "Reverb Mix", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterBool> ("fxBypass", "FX Bypass", false));
 
-    // STAGE 12: Unison & Macro
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("unisonSpread", "Unison Spread", 0.0f, 0.05f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("macroMorph", "Macro: Clean <-> Dirty", 0.0f, 1.0f, 0.0f));
-    
-    juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1", "Osc 1 Waveform", waveforms, 0));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform2", "Osc 2 Waveform", waveforms, 1));
-    juce::StringArray filterTypes = { "LP 12dB", "LP 24dB", "High Pass", "Band Pass" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("filterType", "Filter Type", filterTypes, 0));
-    juce::StringArray lfoWaveforms = { "Sine", "Triangle", "Saw", "Square", "S&H" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("lfoWaveform", "LFO Waveform", lfoWaveforms, 0));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("distDrive",     "Dist Drive",     0.0f, 1.0f,  0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("distMix",       "Dist Mix",       0.0f, 1.0f,  0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusRate",    "Chorus Rate",    0.1f, 5.0f,  1.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusDepth",   "Chorus Depth",   0.0f, 1.0f,  0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusMix",     "Chorus Mix",     0.0f, 1.0f,  0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("delayTime",     "Delay Time",     0.01f, 1.0f, 0.3f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("delayFeedback", "Delay Feedback", 0.0f, 0.9f,  0.3f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("delayMix",      "Delay Mix",      0.0f, 1.0f,  0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbDecay",   "Reverb Decay",   0.0f, 0.95f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbMix",     "Reverb Mix",     0.0f, 1.0f,  0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterBool>  ("fxBypass",      "FX Bypass",      false));
 
-    return { params.begin(), params.end() };
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("unisonSpread", "Unison Spread", 0.0f, 0.05f, 0.0f));
+    p.push_back (std::make_unique<juce::AudioParameterFloat> ("macroMorph",   "Clean <-> Dirty", 0.0f, 1.0f, 0.0f));
+
+    p.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1",   "Osc 1 Waveform", waves,  0));
+    p.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform2",   "Osc 2 Waveform", waves,  1));
+    p.push_back (std::make_unique<juce::AudioParameterChoice> ("filterType",  "Filter Type",    ftypes, 0));
+    p.push_back (std::make_unique<juce::AudioParameterChoice> ("lfoWaveform", "LFO Waveform",   lwaves, 0));
+
+    return { p.begin(), p.end() };
 }
 
-void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void HuntericeAbyssAudioProcessor::resetDsp()
 {
-    currentSampleRate = sampleRate;
-    smoothedDrive.reset (sampleRate, 0.05);
-    smoothedCutoff.reset (sampleRate, 0.02);
-    smoothedResonance.reset (sampleRate, 0.02);
-    filterL.reset(); filterR.reset(); delayL.reset(); delayR.reset();
-    chorusL.reset(); chorusR.reset(); reverbL.reset(); reverbR.reset();
-    currentModWheel = 0.0f;
-    for (auto& voice : voices) { voice.adsr.setSampleRate (sampleRate); voice.filterAdsr.setSampleRate (sampleRate); voice.active = false; }
+    for (auto& v : voices) { v.active = false; v.releasing = false; v.ampEnv.reset(); v.filterEnv.reset(); v.filter.reset(); }
+    delayL.reset(); delayR.reset();
+    chorusL.reset(); chorusR.reset();
+    reverbL.reset(); reverbR.reset();
+    normGain = 1.0f;
+}
+
+void HuntericeAbyssAudioProcessor::allNotesOff (bool force)
+{
+    for (auto& v : voices)
+    {
+        if (! v.active) continue;
+        if (force) { v.active = false; v.ampEnv.reset(); v.filterEnv.reset(); }
+        else       { v.releasing = true; v.sustained = false; v.ampEnv.noteOff(); v.filterEnv.noteOff(); }
+    }
+}
+
+void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int)
+{
+    sr = (sampleRate > 0.0 ? sampleRate : 44100.0);
+
+    static const char* ids[NumSmooth] = {
+        "volume", "osc2Level", "osc2Detune", "subLevel", "noiseLevel", "masterDrive",
+        "filterCutoff", "filterResonance", "filterDrive", "filterKeyTrack", "filterEnvAmount",
+        "lfoRate", "lfoDepth", "modLfoToPitch", "modLfoToCutoff", "modEnvToPitch", "modVelToCutoff",
+        "distDrive", "distMix", "chorusRate", "chorusDepth", "chorusMix",
+        "delayTime", "delayFeedback", "delayMix", "reverbDecay", "reverbMix",
+        "unisonSpread", "macroMorph", "patch0Amt", "patch1Amt", "patch2Amt", "patch3Amt"
+    };
+
+    for (int i = 0; i < NumSmooth; ++i)
+    {
+        const double ramp = (i == DelayTime ? 0.15 : 0.03);
+        sm[(size_t) i].prepare (sr, ramp, parameters.getRawParameterValue (ids[i]));
+    }
+
+    bend.reset (sr, 0.01);
+    bend.setCurrentAndTargetValue (0.0f);
+
+    reverbL.prepare (sr);
+    reverbR.prepare (sr);
+    resetDsp();
+
+    for (auto& v : voices) { v.ampEnv.setSampleRate (sr); v.filterEnv.setSampleRate (sr); }
+    modWheel = 0.0f;
+    sustainPedal = false;
 }
 
 void HuntericeAbyssAudioProcessor::releaseResources() {}
 
-inline float generateWaveform (float phase, HuntericeAbyssAudioProcessor::Waveform wf)
-{
-    switch (wf)
-    {
-        case HuntericeAbyssAudioProcessor::Waveform::Sine: return std::sin (2.0f * juce::MathConstants<float>::pi * phase);
-        case HuntericeAbyssAudioProcessor::Waveform::Saw: return 2.0f * phase - 1.0f;
-        case HuntericeAbyssAudioProcessor::Waveform::Square: return (phase < 0.5f) ? 1.0f : -1.0f;
-        case HuntericeAbyssAudioProcessor::Waveform::Triangle:
-            if (phase < 0.25f) return 4.0f * phase;
-            else if (phase < 0.75f) return 2.0f - 4.0f * phase;
-            else return 4.0f * phase - 4.0f;
-        default: return 0.0f;
-    }
-}
-
-void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
-    auto totalNumInputChannels  = getTotalNumInputChannels();
-    auto totalNumOutputChannels = getTotalNumOutputChannels();
+    const int numSamples = buffer.getNumSamples();
+    const int numCh = buffer.getNumChannels();
+    buffer.clear();
+    if (numCh == 0 || numSamples == 0) { midi.clear(); return; }
 
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i) buffer.clear (i, 0, buffer.getNumSamples());
+    // --- параметры блочного уровня ---
+    const float kt = parameters.getRawParameterValue ("filterKeyTrack")->load();
+    wf1   = (Waveform)   juce::jlimit (0, 3, (int) parameters.getRawParameterValue ("waveform1")->load());
+    wf2   = (Waveform)   juce::jlimit (0, 3, (int) parameters.getRawParameterValue ("waveform2")->load());
+    fType = (FilterType) juce::jlimit (0, 3, (int) parameters.getRawParameterValue ("filterType")->load());
+    const int lw = juce::jlimit (0, 4, (int) parameters.getRawParameterValue ("lfoWaveform")->load());
+    lfoSH = (lw == 4);
+    lfoWf = (Waveform) (lw == 1 ? 3 : (lw == 2 ? 1 : (lw == 3 ? 2 : 0)));
+    const bool bypass = parameters.getRawParameterValue ("fxBypass")->load() > 0.5f;
 
-    float attack = parameters.getRawParameterValue ("attack")->load();
-    float decay = parameters.getRawParameterValue ("decay")->load();
-    float sustain = parameters.getRawParameterValue ("sustain")->load();
-    float release = parameters.getRawParameterValue ("release")->load();
-    float volume = parameters.getRawParameterValue ("volume")->load();
-    
-    float osc2Level = parameters.getRawParameterValue ("osc2Level")->load();
-    float osc2Detune = parameters.getRawParameterValue ("osc2Detune")->load();
-    float subLevel = parameters.getRawParameterValue ("subLevel")->load();
-    float noiseLevel = parameters.getRawParameterValue ("noiseLevel")->load();
-    float analogDrift = parameters.getRawParameterValue ("analogDrift")->load();
-    float masterDrive = parameters.getRawParameterValue ("masterDrive")->load();
-    
-    float filterCutoff = parameters.getRawParameterValue ("filterCutoff")->load();
-    float filterResonance = parameters.getRawParameterValue ("filterResonance")->load();
-    float filterDrive = parameters.getRawParameterValue ("filterDrive")->load();
-    float filterKeyTrack = parameters.getRawParameterValue ("filterKeyTrack")->load();
-    int filterTypeIdx = static_cast<int> (parameters.getRawParameterValue ("filterType")->load());
-    
-    float fAttack = parameters.getRawParameterValue ("filterAttack")->load();
-    float fDecay = parameters.getRawParameterValue ("filterDecay")->load();
-    float fSustain = parameters.getRawParameterValue ("filterSustain")->load();
-    float fRelease = parameters.getRawParameterValue ("filterRelease")->load();
-    float fEnvAmount = parameters.getRawParameterValue ("filterEnvAmount")->load();
-    
-    float lfoRate = parameters.getRawParameterValue ("lfoRate")->load();
-    float lfoDepth = parameters.getRawParameterValue ("lfoDepth")->load();
-    int lfoWfIdx = static_cast<int> (parameters.getRawParameterValue ("lfoWaveform")->load());
-    Waveform currentLfoWaveform = static_cast<Waveform> (juce::jlimit (0, 3, lfoWfIdx));
-    bool lfoIsSH = (lfoWfIdx == 4);
-    
-    float modLfoToPitch = parameters.getRawParameterValue ("modLfoToPitch")->load();
-    float modLfoToCutoff = parameters.getRawParameterValue ("modLfoToCutoff")->load();
-    float modEnvToPitch = parameters.getRawParameterValue ("modEnvToPitch")->load();
-    float modVelToCutoff = parameters.getRawParameterValue ("modVelToCutoff")->load();
-    
-    float distDrive = parameters.getRawParameterValue ("distDrive")->load();
-    float distMix = parameters.getRawParameterValue ("distMix")->load();
-    float chorusRate = parameters.getRawParameterValue ("chorusRate")->load();
-    float chorusDepth = parameters.getRawParameterValue ("chorusDepth")->load();
-    float chorusMix = parameters.getRawParameterValue ("chorusMix")->load();
-    float delayTime = parameters.getRawParameterValue ("delayTime")->load();
-    float delayFeedback = parameters.getRawParameterValue ("delayFeedback")->load();
-    float delayMix = parameters.getRawParameterValue ("delayMix")->load();
-    float reverbDecay = parameters.getRawParameterValue ("reverbDecay")->load();
-    float reverbMix = parameters.getRawParameterValue ("reverbMix")->load();
-    bool fxBypass = parameters.getRawParameterValue ("fxBypass")->load();
+    juce::ADSR::Parameters ap, fp;
+    ap.attack  = parameters.getRawParameterValue ("attack")->load();
+    ap.decay   = parameters.getRawParameterValue ("decay")->load();
+    ap.sustain = parameters.getRawParameterValue ("sustain")->load();
+    ap.release = parameters.getRawParameterValue ("release")->load();
+    fp.attack  = parameters.getRawParameterValue ("filterAttack")->load();
+    fp.decay   = parameters.getRawParameterValue ("filterDecay")->load();
+    fp.sustain = parameters.getRawParameterValue ("filterSustain")->load();
+    fp.release = parameters.getRawParameterValue ("filterRelease")->load();
 
-    float unisonSpread = parameters.getRawParameterValue ("unisonSpread")->load();
-    float macroMorph = parameters.getRawParameterValue ("macroMorph")->load();
-    
-    for (int i = 0; i < NUM_PATCH_CABLES; ++i)
+    for (auto& v : voices)
     {
-        patchCables[i].source = static_cast<ModSource> (static_cast<int> (parameters.getRawParameterValue ("patch" + juce::String(i) + "Src")->load()));
-        patchCables[i].destination = static_cast<ModDest> (static_cast<int> (parameters.getRawParameterValue ("patch" + juce::String(i) + "Dst")->load()));
-        patchCables[i].amount = parameters.getRawParameterValue ("patch" + juce::String(i) + "Amt")->load();
-        patchCables[i].active = (patchCables[i].source != ModSource::None && patchCables[i].destination != ModDest::None);
-    }
-    
-    smoothedDrive.setTargetValue (masterDrive);
-    smoothedCutoff.setTargetValue (filterCutoff);
-    smoothedResonance.setTargetValue (filterResonance);
-    currentFilterType = static_cast<FilterType> (juce::jlimit (0, 3, filterTypeIdx));
-    
-    int wf1 = static_cast<int> (parameters.getRawParameterValue ("waveform1")->load());
-    int wf2 = static_cast<int> (parameters.getRawParameterValue ("waveform2")->load());
-    currentWaveform1 = static_cast<Waveform> (juce::jlimit (0, 3, wf1));
-    currentWaveform2 = static_cast<Waveform> (juce::jlimit (0, 3, wf2));
-
-    for (auto& voice : voices)
-    {
-        voice.adsrParams.attack = attack; voice.adsrParams.decay = decay;
-        voice.adsrParams.sustain = sustain; voice.adsrParams.release = release;
-        voice.adsr.setParameters (voice.adsrParams);
-        voice.filterAdsrParams.attack = fAttack; voice.filterAdsrParams.decay = fDecay;
-        voice.filterAdsrParams.sustain = fSustain; voice.filterAdsrParams.release = fRelease;
-        voice.filterAdsr.setParameters (voice.filterAdsrParams);
+        v.ampEnv.setParameters (ap);
+        v.filterEnv.setParameters (fp);
+        v.keyTrackMul = std::pow (2.0f, (float) (v.midiNote - 60) * 0.0833333f * kt);
     }
 
-    for (const auto metadata : midiMessages)
+    for (int i = 0; i < NUM_PATCH; ++i)
     {
-        auto msg = metadata.getMessage();
-        if (msg.isController() && msg.getControllerNumber() == 1) currentModWheel = msg.getControllerValue() / 127.0f;
-        else if (msg.isNoteOn() && msg.getVelocity() > 0)
-        {
-            int note = msg.getNoteNumber();
-            float freq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
-            float vel = msg.getVelocity() / 127.0f;
-            int voiceIndex = -1;
-            for (int i = 0; i < MAX_VOICES; ++i) if (!voices[i].active) { voiceIndex = i; break; }
-            if (voiceIndex == -1) voiceIndex = 0;
-            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate, vel, unisonSpread);
-            voices[voiceIndex].midiNote = note;
-            lastNotePlayed = note;
-        }
-        else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
-        {
-            int note = msg.getNoteNumber();
-            for (int i = 0; i < MAX_VOICES; ++i) if (voices[i].active && voices[i].midiNote == note) voices[i].noteOff();
-        }
+        cables[(size_t) i].src = (ModSource) (int) parameters.getRawParameterValue ("patch" + juce::String (i) + "Src")->load();
+        cables[(size_t) i].dst = (ModDest)   (int) parameters.getRawParameterValue ("patch" + juce::String (i) + "Dst")->load();
+        cables[(size_t) i].on  = cables[(size_t) i].src != ModSource::None && cables[(size_t) i].dst != ModDest::None;
     }
-    midiMessages.clear();
 
-    float keyTrackOffset = ((float)lastNotePlayed - 60.0f) / 120.0f * filterKeyTrack;
-    int delaySamples = (int)(delayTime * (float)currentSampleRate);
-    delaySamples = juce::jlimit (1, MAX_DELAY_SAMPLES - 1, delaySamples);
+    for (auto& s : sm) s.update();
 
-    for (int channel = 0; channel < totalNumOutputChannels; ++channel)
+    NoteParams np;
+    np.sampleRate  = sr;
+    np.analogDrift = parameters.getRawParameterValue ("analogDrift")->load();
+
+    juce::MidiBuffer::Iterator it (midi);
+    juce::MidiMessage msg;
+    int msgPos = 0;
+    bool hasNext = it.getNextEvent (msg, msgPos);
+    bool dspFault = false;
+
+    const float nyq = (float) sr * 0.45f;
+
+    for (int i = 0; i < numSamples; ++i)
     {
-        auto* channelData = buffer.getWritePointer (channel);
-        bool isLeft = (channel == 0);
-        SVFilter& filter = isLeft ? filterL : filterR;
-        DelayLine& delay = isLeft ? delayL : delayR;
-        ChorusEffect& chorus = isLeft ? chorusL : chorusR;
-        ReverbEffect& reverb = isLeft ? reverbL : reverbR;
-
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        // --- сэмпл-точное MIDI ---
+        while (hasNext && msgPos <= i)
         {
-            float mix = 0.0f;
-            float currentDrive = smoothedDrive.getNextValue();
-            
-            float morphedCutoff = juce::jlimit (0.0f, 1.0f, smoothedCutoff.getNextValue() + keyTrackOffset + (macroMorph * 0.6f));
-            float morphedDistDrive = distDrive + (macroMorph * 0.8f);
-            float morphedNoise = noiseLevel + (macroMorph * 0.5f);
-            
-            float currentResonance = smoothedResonance.getNextValue();
-            float masterVolMod = 0.0f;
-
-            for (int v = 0; v < MAX_VOICES; ++v)
+            if (msg.isController())
             {
-                if (!voices[v].active) continue;
-                float env = voices[v].adsr.getNextSample();
-                float fEnv = voices[v].filterAdsr.getNextSample();
-                if (env <= 0.0f && !voices[v].adsr.isActive() && !voices[v].filterAdsr.isActive()) { voices[v].active = false; continue; }
-
-                float lfoValue = 0.0f;
-                if (lfoIsSH)
+                const int cc = msg.getControllerNumber();
+                if (cc == 1)  modWheel = msg.getControllerValue() / 127.0f;
+                if (cc == 64)
                 {
-                    voices[v].lfoPhase += voices[v].lfoPhaseInc;
-                    if (voices[v].lfoPhase >= 1.0f) { voices[v].lfoPhase -= 1.0f; voices[v].lfoSHValue = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f; }
-                    lfoValue = voices[v].lfoSHValue;
+                    sustainPedal = msg.getControllerValue() >= 64;
+                    if (! sustainPedal)
+                        for (auto& v : voices)
+                            if (v.active && v.sustained) { v.sustained = false; v.releasing = true; v.ampEnv.noteOff(); v.filterEnv.noteOff(); }
                 }
-                else if (lfoDepth > 0.0f || modLfoToPitch > 0.0f || modLfoToCutoff > 0.0f)
-                {
-                    lfoValue = generateWaveform ((float)voices[v].lfoPhase, currentLfoWaveform);
-                    voices[v].lfoPhase += voices[v].lfoPhaseInc;
-                    if (voices[v].lfoPhase >= 1.0f) voices[v].lfoPhase -= 1.0f;
-                }
+                if (cc == 120 || cc == 123) allNotesOff (cc == 120);
+            }
+            else if (msg.isPitchWheel())
+            {
+                bend.setTargetValue (((float) msg.getPitchWheelValue() - 8192.0f) / 8192.0f * 2.0f);
+            }
+            else if (msg.isNoteOn() && msg.getVelocity() > 0)
+            {
+                const int note = msg.getNoteNumber();
+                np.osc2Detune = sm[Osc2Detune].v.getCurrentValue();
+                np.lfoRate    = sm[LfoRate].v.getCurrentValue();
+                np.velocity   = msg.getVelocity() / 127.0f;
+                np.unison     = sm[Unison].v.getCurrentValue();
 
-                float voicePitchMod = (fEnv - 0.5f) * modEnvToPitch * 0.05f + lfoValue * modLfoToPitch * 0.05f;
-                float voiceCutoffMod = (fEnv * fEnvAmount) + (lfoValue * lfoDepth) + (lfoValue * modLfoToCutoff) + ((voices[v].velocity - 0.5f) * modVelToCutoff * 0.5f) + ((currentModWheel - 0.5f) * 0.5f);
-
-                for (int c = 0; c < NUM_PATCH_CABLES; ++c)
+                int idx = -1;
+                for (int k = 0; k < MAX_VOICES; ++k)
+                    if (voices[(size_t) k].active && voices[(size_t) k].midiNote == note && ! voices[(size_t) k].releasing) { idx = k; break; }
+                if (idx < 0)
+                    for (int k = 0; k < MAX_VOICES; ++k)
+                        if (! voices[(size_t) k].active) { idx = k; break; }
+                if (idx < 0)
                 {
-                    if (!patchCables[c].active) continue;
-                    float srcVal = 0.0f;
-                    switch (patchCables[c].source)
+                    juce::uint32 best = 0xffffffffu;
+                    for (int k = 0; k < MAX_VOICES; ++k)
+                        if (voices[(size_t) k].releasing && voices[(size_t) k].serial < best) { best = voices[(size_t) k].serial; idx = k; }
+                    if (idx < 0)
                     {
-                        case ModSource::LFO: srcVal = lfoValue; break;
-                        case ModSource::FilterEnv: srcVal = fEnv; break;
-                        case ModSource::Velocity: srcVal = voices[v].velocity; break;
-                        case ModSource::ModWheel: srcVal = currentModWheel; break;
-                        default: break;
-                    }
-                    float modAmount = srcVal * patchCables[c].amount;
-                    switch (patchCables[c].destination)
-                    {
-                        case ModDest::FilterCutoff: voiceCutoffMod += modAmount; break;
-                        case ModDest::Osc1Pitch: voicePitchMod += modAmount * 0.05f; break;
-                        case ModDest::Osc2Pitch: voicePitchMod += modAmount * 0.05f; break;
-                        case ModDest::MasterVol: masterVolMod += modAmount; break;
-                        case ModDest::FilterRes: currentResonance += modAmount; break;
-                        default: break;
+                        best = 0xffffffffu;
+                        for (int k = 0; k < MAX_VOICES; ++k)
+                            if (voices[(size_t) k].serial < best) { best = voices[(size_t) k].serial; idx = k; }
                     }
                 }
-
-                float modulatedPhaseInc1 = voices[v].phaseInc1 * (1.0f + voicePitchMod);
-                float modulatedPhaseInc2 = voices[v].phaseInc2 * (1.0f + voicePitchMod);
-                float modulatedPhaseIncSub = voices[v].phaseIncSub * (1.0f + voicePitchMod);
-
-                float osc1 = generateWaveform ((float)voices[v].phase1, currentWaveform1);
-                voices[v].phase1 += modulatedPhaseInc1;
-                if (voices[v].phase1 >= 1.0) voices[v].phase1 -= 1.0;
-
-                float osc2 = 0.0f;
-                if (osc2Level > 0.0f)
-                {
-                    osc2 = generateWaveform ((float)voices[v].phase2, currentWaveform2);
-                    voices[v].phase2 += modulatedPhaseInc2;
-                    if (voices[v].phase2 >= 1.0) voices[v].phase2 -= 1.0;
-                }
-
-                float sub = 0.0f;
-                if (subLevel > 0.0f)
-                {
-                    sub = (voices[v].phaseSub < 0.5f) ? 1.0f : -1.0f;
-                    voices[v].phaseSub += modulatedPhaseIncSub;
-                    if (voices[v].phaseSub >= 1.0) voices[v].phaseSub -= 1.0;
-                }
-
-                float noise = 0.0f;
-                if (morphedNoise > 0.0f) noise = generateNoise (voices[v].noiseState);
-
-                for (int c = 0; c < NUM_PATCH_CABLES; ++c)
-                {
-                    if (!patchCables[c].active) continue;
-                    float srcVal = 0.0f;
-                    if (patchCables[c].source == ModSource::Osc1Audio) srcVal = osc1;
-                    else if (patchCables[c].source == ModSource::NoiseAudio) srcVal = noise;
-                    else continue;
-                    float modAmount = srcVal * patchCables[c].amount;
-                    if (patchCables[c].destination == ModDest::FilterCutoff) voiceCutoffMod += modAmount * 0.5f;
-                }
-
-                float modulatedCutoff = juce::jlimit (0.0f, 1.0f, morphedCutoff + voiceCutoffMod);
-                float oscMix = (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * morphedNoise)) * env;
-                
-                float filtered = filter.process (oscMix, modulatedCutoff, currentResonance, filterDrive, currentFilterType);
-                float driveMultiplier = 1.0f + (morphedDistDrive * 4.0f);
-                float saturatedMix = std::tanh (filtered * driveMultiplier);
-                float compensation = 1.0f / std::tanh (driveMultiplier);
-                if (driveMultiplier > 1.0f) saturatedMix *= compensation;
-
-                mix += saturatedMix;
+                if (idx < 0) idx = 0;
+                voices[(size_t) idx].start (note, (float) juce::MidiMessage::getMidiNoteInHertz (note), np, rng, ++noteSerial);
+                voices[(size_t) idx].keyTrackMul = std::pow (2.0f, (float) (note - 60) * 0.0833333f * kt);
             }
-
-            float drySignal = mix * volume * (1.0f + masterVolMod);
-            float fxSignal = drySignal;
-
-            if (!fxBypass)
+            else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
             {
-                if (distMix > 0.0f)
-                {
-                    float distMultiplier = 1.0f + (distDrive * 10.0f);
-                    float distorted = std::tanh (fxSignal * distMultiplier);
-                    float compDist = 1.0f / std::tanh (distMultiplier);
-                    if (distMultiplier > 1.0f) distorted *= compDist;
-                    fxSignal = fxSignal * (1.0f - distMix) + distorted * distMix;
-                }
-                if (chorusMix > 0.0f) fxSignal = chorus.process (fxSignal, chorusRate, chorusDepth, chorusMix, currentSampleRate);
-                if (delayMix > 0.0f)
-                {
-                    float delayed = delay.process (fxSignal, delaySamples, delayFeedback);
-                    fxSignal = fxSignal * (1.0f - delayMix) + delayed * delayMix;
-                }
-                if (reverbMix > 0.0f) fxSignal = reverb.process (fxSignal, reverbDecay, reverbMix);
+                const int note = msg.getNoteNumber();
+                for (auto& v : voices)
+                    if (v.active && v.midiNote == note && ! v.releasing) v.stop (sustainPedal);
             }
-            channelData[sample] = fxSignal;
+            hasNext = it.getNextEvent (msg, msgPos);
+        }
+
+        // --- сглаженные значения ---
+        float pv[NumSmooth];
+        for (int k = 0; k < NumSmooth; ++k) pv[k] = sm[(size_t) k].next();
+
+        const float macro     = pv[Macro];
+        const float osc2Level = pv[Osc2Level];
+        const float subLevel  = pv[SubLevel];
+        const float noiseMix  = juce::jlimit (0.0f, 1.0f, pv[NoiseLevel] + macro * 0.35f);
+        const float baseCut   = juce::jlimit (0.0f, 1.0f, pv[Cutoff] + macro * 0.45f);
+        const float res       = juce::jlimit (0.0f, 1.0f, pv[Resonance]);
+        const float fDrive    = juce::jlimit (0.0f, 1.0f, pv[FilterDrive] + macro * 0.5f);
+        const float mDrive    = juce::jlimit (0.0f, 1.0f, pv[MasterDrive] + macro * 0.6f);
+        const float bendMul   = std::pow (2.0f, bend.getNextValue() / 12.0f);
+
+        float mixL = 0.0f, mixR = 0.0f;
+        float volMod = 0.0f;
+        int activeCount = 0;
+
+        // --- ГОЛОСА (один раз на сэмпл, не на канал!) ---
+        for (auto& v : voices)
+        {
+            if (! v.active) continue;
+
+            const float env = v.ampEnv.getNextSample();
+            const float fe  = v.filterEnv.getNextSample();
+            if (! v.ampEnv.isActive()) { v.active = false; continue; }
+            ++activeCount;
+
+            // LFO
+            float lfo;
+            v.lfoInc = (double) pv[LfoRate] / sr;
+            v.lfoPhase += v.lfoInc;
+            if (v.lfoPhase >= 1.0)
+            {
+                v.lfoPhase -= 1.0;
+                if (lfoSH) v.shValue = rng.nextFloat() * 2.0f - 1.0f;
+            }
+            lfo = lfoSH ? v.shValue : osc ((float) v.lfoPhase, 0.0f, lfoWf);
+
+            float pitchMod  = (fe - 0.5f) * pv[ModEnvPitch] * 0.05f + lfo * pv[ModLfoPitch] * 0.05f;
+            float cutoffMod = fe * pv[FilterEnvAmt] + lfo * pv[LfoDepth] + lfo * pv[ModLfoCutoff]
+                            + (v.velocity - 0.5f) * pv[ModVelCutoff] * 0.5f + modWheel * 0.3f;
+            float resMod = 0.0f;
+
+            // патч-бей: управляющие источники
+            for (int c = 0; c < NUM_PATCH; ++c)
+            {
+                const auto& cb = cables[(size_t) c];
+                if (! cb.on) continue;
+                float s = 0.0f;
+                switch (cb.src)
+                {
+                    case ModSource::LFO:       s = lfo; break;
+                    case ModSource::FilterEnv: s = fe; break;
+                    case ModSource::Velocity:  s = v.velocity; break;
+                    case ModSource::ModWheel:  s = modWheel; break;
+                    default: continue;
+                }
+                const float a = s * pv[Patch0 + c];
+                switch (cb.dst)
+                {
+                    case ModDest::FilterCutoff: cutoffMod += a; break;
+                    case ModDest::Osc1Pitch:
+                    case ModDest::Osc2Pitch:    pitchMod  += a * 0.05f; break;
+                    case ModDest::MasterVol:    volMod    += a; break;
+                    case ModDest::FilterRes:    resMod    += a; break;
+                    default: break;
+                }
+            }
+
+            const float pf = (1.0f + pitchMod + v.audioPitchMod) * bendMul;
+            const float dt1 = (float) juce::jlimit (0.0, 0.45, v.inc1 * (double) pf);
+            const float dt2 = (float) juce::jlimit (0.0, 0.45, v.inc2 * (double) pf);
+            const float dtS = (float) juce::jlimit (0.0, 0.45, v.incSub * (double) pf);
+
+            const float o1 = osc ((float) v.phase1, dt1, wf1);
+            const float o2 = (osc2Level > 0.0001f) ? osc ((float) v.phase2, dt2, wf2) : 0.0f;
+            const float sb = (subLevel  > 0.0001f) ? ((v.phaseSub < 0.5) ? 1.0f : -1.0f) : 0.0f;
+            const float nz = (noiseMix  > 0.0001f) ? noise (v.noiseSeed) : 0.0f;
+
+            v.phase1 += dt1; if (v.phase1 >= 1.0) v.phase1 -= std::floor (v.phase1);
+            v.phase2 += dt2; if (v.phase2 >= 1.0) v.phase2 -= std::floor (v.phase2);
+            v.phaseSub += dtS; if (v.phaseSub >= 1.0) v.phaseSub -= std::floor (v.phaseSub);
+
+            // патч-бей: audio-rate источники
+            float audioCut = 0.0f;
+            v.audioPitchMod = 0.0f;
+            for (int c = 0; c < NUM_PATCH; ++c)
+            {
+                const auto& cb = cables[(size_t) c];
+                if (! cb.on) continue;
+                float s = 0.0f;
+                if      (cb.src == ModSource::Osc1Audio)  s = o1;
+                else if (cb.src == ModSource::NoiseAudio) s = nz;
+                else continue;
+                const float a = s * pv[Patch0 + c];
+                if      (cb.dst == ModDest::FilterCutoff) audioCut += a * 0.5f;
+                else if (cb.dst == ModDest::Osc1Pitch || cb.dst == ModDest::Osc2Pitch) v.audioPitchMod += a * 0.1f;
+                else if (cb.dst == ModDest::FilterRes) resMod += a * 0.3f;
+            }
+
+            const float cn = juce::jlimit (0.0f, 1.0f, baseCut + cutoffMod + audioCut);
+            float fc = 20.0f * std::pow (1000.0f, cn) * v.keyTrackMul;
+            fc = juce::jlimit (20.0f, nyq, fc);
+            const float g = std::tan (juce::MathConstants<float>::pi * fc / (float) sr);
+            const float Q = 0.5f + std::pow (juce::jlimit (0.0f, 1.0f, res + resMod), 2.0f) * 24.5f;
+            const float k = juce::jlimit (0.04f, 2.0f, 1.0f / Q);
+
+            float sig = o1 + o2 * osc2Level + sb * subLevel * 0.8f + nz * noiseMix * 0.5f;
+            sig = std::tanh (sig * (1.0f + fDrive * 3.0f)) / (1.0f + fDrive * 0.7f);
+
+            const float filtered = v.filter.process (sig, g, k, fType);
+            const float s = filtered * env;
+            mixL += s * v.panL;
+            mixR += s * v.panR;
+        }
+
+        // --- авто-нормализация громкости ---
+        const float target = 1.0f / std::sqrt ((float) juce::jmax (1, activeCount));
+        normGain += 0.0015f * (target - normGain);
+        const float gain = normGain * pv[Volume] * juce::jlimit (0.0f, 2.0f, 1.0f + volMod);
+
+        float dryL = mixL * gain;
+        float dryR = mixR * gain;
+
+        // --- мастер-сатурация ---
+        if (mDrive > 0.0001f)
+        {
+            const float d = 1.0f + mDrive * 4.0f;
+            const float comp = 1.0f / std::tanh (d);
+            dryL = std::tanh (dryL * d) * comp;
+            dryR = std::tanh (dryR * d) * comp;
+        }
+
+        // --- ЭФФЕКТЫ (после суммы, отдельно L/R) ---
+        float outL = dryL, outR = dryR;
+        if (! bypass)
+        {
+            const float dm = pv[DistMix];
+            if (dm > 0.0001f)
+            {
+                const float d = 1.0f + pv[DistDrive] * 10.0f;
+                const float comp = 1.0f / std::tanh (d);
+                outL += (std::tanh (outL * d) * comp - outL) * dm;
+                outR += (std::tanh (outR * d) * comp - outR) * dm;
+            }
+            const float cm = pv[ChorusMix];
+            if (cm > 0.0001f)
+            {
+                outL = chorusL.process (outL, pv[ChorusRate], pv[ChorusDepth], cm, sr, 0.0f);
+                outR = chorusR.process (outR, pv[ChorusRate], pv[ChorusDepth], cm, sr, 0.25f);
+            }
+            const float dlm = pv[DelayMix];
+            if (dlm > 0.0001f)
+            {
+                const float len = juce::jlimit (1.0f, (float) (DELAY_MAX - 2), pv[DelayTime] * (float) sr);
+                outL += delayL.process (outL, len, pv[DelayFeedback]) * dlm;
+                outR += delayR.process (outR, len, pv[DelayFeedback]) * dlm;
+            }
+            const float rm = pv[ReverbMix];
+            if (rm > 0.0001f)
+            {
+                outL = reverbL.process (outL, pv[ReverbDecay], rm);
+                outR = reverbR.process (outR, pv[ReverbDecay], rm);
+            }
+        }
+
+        // --- защита от NaN/Inf + мягкий лимитер ---
+        if (! std::isfinite (outL) || ! std::isfinite (outR))
+        {
+            outL = outR = 0.0f;
+            dspFault = true;
+        }
+        outL = juce::jlimit (-2.0f, 2.0f, outL);
+        outR = juce::jlimit (-2.0f, 2.0f, outR);
+
+        if (numCh == 1) buffer.setSample (0, i, (outL + outR) * 0.5f);
+        else
+        {
+            buffer.setSample (0, i, outL);
+            buffer.setSample (1, i, outR);
         }
     }
+
+    if (dspFault) resetDsp();
+    midi.clear();
 }
 
-juce::AudioProcessorEditor* HuntericeAbyssAudioProcessor::createEditor() { return new HuntericeAbyssAudioProcessorEditor (*this, parameters); }
-void HuntericeAbyssAudioProcessor::getStateInformation (juce::MemoryBlock& destData) { auto state = parameters.copyState(); std::unique_ptr<juce::XmlElement> xml (state.createXml()); copyXmlToBinary (*xml, destData); }
-void HuntericeAbyssAudioProcessor::setStateInformation (const void* data, int sizeInBytes) { std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes)); if (xmlState.get() != nullptr) if (xmlState->hasTagName (parameters.state.getType())) parameters.replaceState (juce::ValueTree::fromXml (*xmlState)); }
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new HuntericeAbyssAudioProcessor(); }
+juce::AudioProcessorEditor* HuntericeAbyssAudioProcessor::createEditor()
+{
+    return new HuntericeAbyssAudioProcessorEditor (*this, parameters);
+}
+
+void HuntericeAbyssAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = parameters.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    copyXmlToBinary (*xml, destData);
+}
+
+void HuntericeAbyssAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+    if (xmlState != nullptr && xmlState->hasTagName (parameters.state.getType()))
+        parameters.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new HuntericeAbyssAudioProcessor();
+}
