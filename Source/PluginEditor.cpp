@@ -1,6 +1,9 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+// ============================================================
+// AbyssLookAndFeel
+// ============================================================
 AbyssLookAndFeel::AbyssLookAndFeel()
 {
     setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xFFB41E28));
@@ -78,6 +81,9 @@ void AbyssLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, b
     g.fillPath (arrow);
 }
 
+// ============================================================
+// Editor Constructor
+// ============================================================
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
@@ -422,9 +428,11 @@ void HuntericeAbyssAudioProcessorEditor::showScaleMenu()
     menu.addSeparator();
     menu.addItem (999, "Auto-detect from screen");
     
-    auto chosen = menu.show();
-    if (chosen == 999) applyScale (detectOptimalScale());
-    else if (chosen > 0) applyScale (chosen / 100.0f);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+        [this](int result) {
+            if (result == 999) applyScale (detectOptimalScale());
+            else if (result > 0) applyScale (result / 100.0f);
+        });
 }
 
 void HuntericeAbyssAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
