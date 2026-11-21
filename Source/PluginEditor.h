@@ -24,7 +24,6 @@ private:
     juce::Slider lfoRateSlider, lfoDepthSlider;
     juce::Slider modLfoToPitchSlider, modLfoToCutoffSlider, modEnvToPitchSlider, modVelToCutoffSlider;
     
-    // Semi-Modular Patch Bay (Stage 10)
     juce::ComboBox patch1SrcBox, patch1DstBox;
     juce::Slider patch1AmtSlider;
     juce::ComboBox patch2SrcBox, patch2DstBox;
@@ -34,10 +33,18 @@ private:
     juce::ComboBox patch4SrcBox, patch4DstBox;
     juce::Slider patch4AmtSlider;
 
+    // Effects (Stage 11)
+    juce::Slider distDriveSlider, distMixSlider;
+    juce::Slider chorusRateSlider, chorusDepthSlider, chorusMixSlider;
+    juce::Slider delayTimeSlider, delayFeedbackSlider, delayMixSlider;
+    juce::Slider reverbDecaySlider, reverbMixSlider;
+    juce::ToggleButton fxBypassButton;
+
     juce::ComboBox waveform1Box, waveform2Box, filterTypeBox, lfoWaveformBox;
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     std::unique_ptr<Attachment> attackAtt, decayAtt, sustainAtt, releaseAtt, volumeAtt;
     std::unique_ptr<Attachment> osc2LevelAtt, osc2DetuneAtt, subLevelAtt, noiseLevelAtt;
@@ -55,6 +62,13 @@ private:
     std::unique_ptr<Attachment> patch3AmtAtt;
     std::unique_ptr<ComboBoxAttachment> patch4SrcAtt, patch4DstAtt;
     std::unique_ptr<Attachment> patch4AmtAtt;
+
+    // Effects Attachments
+    std::unique_ptr<Attachment> distDriveAtt, distMixAtt;
+    std::unique_ptr<Attachment> chorusRateAtt, chorusDepthAtt, chorusMixAtt;
+    std::unique_ptr<Attachment> delayTimeAtt, delayFeedbackAtt, delayMixAtt;
+    std::unique_ptr<Attachment> reverbDecayAtt, reverbMixAtt;
+    std::unique_ptr<ButtonAttachment> fxBypassAtt;
 
     std::unique_ptr<ComboBoxAttachment> wf1Att, wf2Att, filterTypeAtt, lfoWaveformAtt;
 
