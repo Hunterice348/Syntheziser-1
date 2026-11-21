@@ -17,7 +17,7 @@ public:
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 2.0; }
+    double getTailLengthSeconds() const override { return 3.0; }
     
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -31,7 +31,6 @@ public:
     enum class Waveform { Sine = 0, Saw, Square, Triangle };
     enum class FilterType { LP12 = 0, LP24, HP, BP };
     
-    // SEMI-MODULAR ENGINE (Stage 10)
     enum class ModSource { None = 0, LFO, FilterEnv, Velocity, ModWheel, Osc1Audio, NoiseAudio, NumSources };
     enum class ModDest { None = 0, FilterCutoff, Osc1Pitch, Osc2Pitch, MasterVol, FilterRes, NumDests };
 
@@ -48,6 +47,7 @@ private:
 
     static constexpr int MAX_VOICES = 16;
     static constexpr int NUM_PATCH_CABLES = 4;
+    static constexpr int MAX_DELAY_SAMPLES = 192000; // 1 секунда при 192kHz
     
     struct Voice
     {
@@ -144,6 +144,115 @@ private:
     };
     
     SVFilter filterL, filterR;
+
+    // --- EFFECTS ENGINE (Stage 11) ---
+    struct DelayLine
+    {
+        std::array<float, MAX_DELAY_SAMPLES> buffer {};
+        int writePos = 0;
+        
+        void reset()
+        {
+            buffer.fill (0.0f);
+            writePos = 0;
+        }
+        
+        float process (float input, int delaySamples, float feedback)
+        {
+            int readPos = writePos - delaySamples;
+            if (readPos < 0) readPos += MAX_DELAY_SAMPLES;
+            
+            float delayed = buffer[readPos];
+            buffer[writePos] = input + delayed * feedback;
+            
+            writePos++;
+            if (writePos >= MAX_DELAY_SAMPLES) writePos = 0;
+            
+            return delayed;
+        }
+    };
+    
+    struct ChorusEffect
+    {
+        std::array<float, MAX_DELAY_SAMPLES> buffer {};
+        int writePos = 0;
+        double lfoPhase = 0.0;
+        
+        void reset()
+        {
+            buffer.fill (0.0f);
+            writePos = 0;
+            lfoPhase = 0.0;
+        }
+        
+        float process (float input, float rate, float depth, float mix)
+        {
+            // LFO для модуляции задержки
+            float lfoValue = std::sin (2.0f * juce::MathConstants<float>::pi * (float)lfoPhase);
+            lfoPhase += rate / currentSampleRate;
+            if (lfoPhase >= 1.0) lfoPhase -= 1.0;
+            
+            // Базовая задержка + модуляция
+            float baseDelay = 0.01f * (float)currentSampleRate; // 10ms
+            float modDelay = baseDelay + lfoValue * depth * 0.005f * (float)currentSampleRate;
+            
+            int readPos = writePos - (int)modDelay;
+            if (readPos < 0) readPos += MAX_DELAY_SAMPLES;
+            
+            buffer[writePos] = input;
+            writePos++;
+            if (writePos >= MAX_DELAY_SAMPLES) writePos = 0;
+            
+            float wet = buffer[readPos];
+            return input * (1.0f - mix) + wet * mix;
+        }
+    };
+    
+    struct ReverbEffect
+    {
+        // Простой алгоритмический ревербератор на основе 4 comb-фильтров
+        std::array<float, 1200> comb1 {};
+        std::array<float, 1600> comb2 {};
+        std::array<float, 2000> comb3 {};
+        std::array<float, 2400> comb4 {};
+        int pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        
+        void reset()
+        {
+            comb1.fill (0.0f); comb2.fill (0.0f);
+            comb3.fill (0.0f); comb4.fill (0.0f);
+            pos1 = pos2 = pos3 = pos4 = 0;
+        }
+        
+        float process (float input, float decay, float mix)
+        {
+            float feedback = juce::jlimit (0.0f, 0.95f, decay);
+            
+            // 4 параллельных comb-фильтра
+            float out1 = comb1[pos1];
+            comb1[pos1] = input + out1 * feedback;
+            pos1 = (pos1 + 1) % comb1.size();
+            
+            float out2 = comb2[pos2];
+            comb2[pos2] = input + out2 * feedback;
+            pos2 = (pos2 + 1) % comb2.size();
+            
+            float out3 = comb3[pos3];
+            comb3[pos3] = input + out3 * feedback;
+            pos3 = (pos3 + 1) % comb3.size();
+            
+            float out4 = comb4[pos4];
+            comb4[pos4] = input + out4 * feedback;
+            pos4 = (pos4 + 1) % comb4.size();
+            
+            float wet = (out1 + out2 + out3 + out4) * 0.25f;
+            return input * (1.0f - mix) + wet * mix;
+        }
+    };
+    
+    DelayLine delayL, delayR;
+    ChorusEffect chorusL, chorusR;
+    ReverbEffect reverbL, reverbR;
 
     inline float generateNoise(float& state) const
     {
