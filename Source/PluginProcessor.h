@@ -40,6 +40,7 @@ private:
     juce::AudioProcessorValueTreeState parameters;
 
     static constexpr int MAX_VOICES = 16;
+    static constexpr int MAX_UNISON = 8;
     static constexpr int NUM_PATCH  = 4;
     static constexpr int DELAY_MAX  = 192000;
     static constexpr int CHORUS_MAX = 8192;
@@ -124,6 +125,11 @@ private:
         juce::ADSR::Parameters ampPars, fltPars;
         SVF filter;
 
+        // === НАСТОЯЩИЙ ЮНИСОН ===
+        int unisonCount = 1;
+        float unisonDetune[MAX_UNISON] = {0};
+        double unisonPhase[MAX_UNISON] = {0};
+
         void start (int note, float freq, double sampleRate, float osc2Detune, float analogDrift,
                     float lfoRate, float vel, float unison, juce::Random& r, juce::uint32 s)
         {
@@ -144,6 +150,10 @@ private:
             const float ang = (pan + 1.0f) * 0.7853981f;
             panL = std::cos (ang); panR = std::sin (ang);
             filter.reset(); ampEnv.noteOn(); filterEnv.noteOn();
+            
+            // Инициализация фаз юнисона
+            for (int i = 0; i < MAX_UNISON; ++i)
+                unisonPhase[i] = phase1;
         }
         void stop (bool sustainPedal)
         {
@@ -173,7 +183,7 @@ private:
         int clapBurstCount = 0;
         float hpState = 0.0f;
         float hpIn = 0.0f;
-        float lpState = 0.0f; // Глобальный фильтр TONE
+        float lpState = 0.0f;
 
         void trigger (float vel, float lvl, float tn, float dec, float ton)
         {
@@ -209,16 +219,12 @@ private:
                     const float freq = baseFreq * (1.0f + (float) pitchEnv * 3.5f);
                     phase += freq / sampleRate;
                     if (phase >= 1.0) phase -= 1.0;
-                    
                     out = std::sin (6.2831853f * (float) phase);
-                    
-                    // Machinedrum/Electribe style click transient
                     float clickPhase = phase * 12.0f;
                     if (clickPhase >= 1.0f) clickPhase -= std::floor(clickPhase);
-                    float clickEnv = std::exp (-150.0f * (float) ampEnvPhase); 
+                    float clickEnv = std::exp (-150.0f * (float) ampEnvPhase);
                     float click = std::sin (6.2831853f * clickPhase) * clickEnv;
                     out += click * 0.5f;
-                    
                     pitchEnv -= pitchDecayRate;
                     if (pitchEnv < 0.0) pitchEnv = 0.0;
                     break;
@@ -290,13 +296,11 @@ private:
                 ampEnvVal = 0.0f;
             }
 
-            // === ГЛОБАЛЬНЫЙ TONE ФИЛЬТР (Volca Drum / Electribe style) ===
             float toneNorm = juce::jlimit (0.0f, 1.0f, tone);
             float alpha = toneNorm * toneNorm;
             lpState = lpState + alpha * (out - lpState);
             out = lpState;
 
-            // Цифровой перегруз при высоком TONE (Monomachine style)
             if (toneNorm > 0.65f)
             {
                 float drive = (toneNorm - 0.65f) * 4.0f;
@@ -431,7 +435,8 @@ private:
         return 0.0f;
     }
 
-    static inline float osc (float ph, float dt, Waveform w)
+    // === OSC С ПОДДЕРЖКОЙ PWM ===
+    static inline float osc (float ph, float dt, Waveform w, float pwm = 0.5f)
     {
         switch (w)
         {
@@ -439,10 +444,11 @@ private:
             case Waveform::Saw:  return (2.0f * ph - 1.0f) - blep (ph, dt);
             case Waveform::Square:
             {
-                float s = (ph < 0.5f) ? 1.0f : -1.0f;
+                float s = (ph < pwm) ? 1.0f : -1.0f;
                 s += blep (ph, dt);
-                float t2 = ph + 0.5f; if (t2 >= 1.0f) t2 -= 1.0f;
-                return s - blep (t2, dt);
+                float t2 = ph - pwm; if (t2 < 0.0f) t2 += 1.0f;
+                s -= blep (t2, dt);
+                return s;
             }
             case Waveform::Triangle:
             default:
