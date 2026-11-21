@@ -56,12 +56,13 @@ private:
               DelayTime, DelayFeedback, DelayMix, ReverbDecay, ReverbMix,
               Unison, Macro, Patch0, Patch1, Patch2, Patch3,
               DrumVol, DrumDrive,
-              KickLvl, KickTune, KickDecay, KickTone,
-              SnareLvl, SnareTune, SnareDecay, SnareTone,
+              KickLvl, KickTune, KickDecay, KickTone, KickBody, KickPitchAmt,
+              SnareLvl, SnareTune, SnareDecay, SnareTone, SnareSnap, SnareBody,
               HatLvl, HatTune, HatDecay, HatTone,
               ClapLvl, ClapTune, ClapDecay, ClapTone,
               TomLvl, TomTune, TomDecay, TomTone,
               PercLvl, PercTune, PercDecay, PercTone,
+              Glide, VelToAmp,
               NumSmooth };
 
     struct Smooth
@@ -115,6 +116,7 @@ private:
         juce::uint32 serial = 0;
         double phase1 = 0.0, phase2 = 0.0, phaseSub = 0.0;
         double inc1 = 0.0, inc2 = 0.0, incSub = 0.0;
+        double targetInc1 = 0.0, targetInc2 = 0.0, targetIncSub = 0.0;
         double lfoPhase = 0.0, lfoInc = 0.0;
         float shValue = 0.0f;
         float audioPitchMod = 0.0f;
@@ -125,7 +127,6 @@ private:
         juce::ADSR::Parameters ampPars, fltPars;
         SVF filter;
 
-        // === НАСТОЯЩИЙ ЮНИСОН ===
         int unisonCount = 1;
         float unisonDetune[MAX_UNISON] = {0};
         double unisonPhase[MAX_UNISON] = {0};
@@ -141,7 +142,8 @@ private:
             const float f1 = freq * ratio;
             const float f2 = freq * ratio * std::pow (2.0f, osc2Detune / 12.0f);
             const float fs = freq * 0.5f * ratio;
-            inc1 = f1 / sampleRate; inc2 = f2 / sampleRate; incSub = fs / sampleRate;
+            targetInc1 = f1 / sampleRate; targetInc2 = f2 / sampleRate; targetIncSub = fs / sampleRate;
+            inc1 = targetInc1; inc2 = targetInc2; incSub = targetIncSub;
             lfoInc = lfoRate / sampleRate;
             phase1 = phase2 = phaseSub = 0.0; lfoPhase = 0.0;
             shValue = r.nextFloat() * 2.0f - 1.0f; audioPitchMod = 0.0f;
@@ -151,7 +153,6 @@ private:
             panL = std::cos (ang); panR = std::sin (ang);
             filter.reset(); ampEnv.noteOn(); filterEnv.noteOn();
             
-            // Инициализация фаз юнисона
             for (int i = 0; i < MAX_UNISON; ++i)
                 unisonPhase[i] = phase1;
         }
@@ -166,13 +167,13 @@ private:
     juce::uint32 noteSerial = 0;
     float normGain = 1.0f;
 
-    // ============ DRUM MACHINE ============
     struct DrumVoice
     {
         enum Type { Kick = 0, Snare, Hat, Clap, Tom, Perc };
         Type type = Kick;
         bool active = false;
         float level = 1.0f, tune = 0.0f, decay = 0.3f, tone = 0.5f;
+        float bodyTone = 0.5f, pitchEnvAmt = 1.0f, snap = 0.0f;
 
         double phase = 0.0;
         double pitchEnv = 0.0;
@@ -185,13 +186,16 @@ private:
         float hpIn = 0.0f;
         float lpState = 0.0f;
 
-        void trigger (float vel, float lvl, float tn, float dec, float ton)
+        void trigger (float vel, float lvl, float tn, float dec, float ton, float body, float pitch, float snp)
         {
             active = true;
             level = vel * lvl;
             tune = tn;
             decay = dec;
             tone = ton;
+            bodyTone = body;
+            pitchEnvAmt = pitch;
+            snap = snp;
             phase = 0.0;
             pitchEnv = 1.0;
             ampEnvPhase = 0.0;
@@ -215,8 +219,8 @@ private:
             {
                 case Kick:
                 {
-                    const float baseFreq = 55.0f * std::pow (2.0f, tune / 12.0f);
-                    const float freq = baseFreq * (1.0f + (float) pitchEnv * 3.5f);
+                    const float baseFreq = 55.0f * std::pow (2.0f, tune / 12.0f) * (0.5f + bodyTone);
+                    const float freq = baseFreq * (1.0f + (float) pitchEnv * 3.5f * pitchEnvAmt);
                     phase += freq / sampleRate;
                     if (phase >= 1.0) phase -= 1.0;
                     out = std::sin (6.2831853f * (float) phase);
@@ -231,12 +235,17 @@ private:
                 }
                 case Snare:
                 {
-                    const float baseFreq = 200.0f * std::pow (2.0f, tune / 12.0f);
+                    const float baseFreq = 200.0f * std::pow (2.0f, tune / 12.0f) * (0.5f + bodyTone);
                     phase += baseFreq / sampleRate;
                     if (phase >= 1.0) phase -= 1.0;
                     float tri = ((float) phase < 0.5f) ? (4.0f * (float) phase - 1.0f) : (3.0f - 4.0f * (float) phase);
                     float nz = noise (noiseSeed);
                     out = tri * 0.4f + nz * 0.8f;
+                    if (snap > 0.0f)
+                    {
+                        float snapEnv = std::exp (-50.0f * (float) ampEnvPhase);
+                        out += snapEnv * snap * 0.5f;
+                    }
                     break;
                 }
                 case Hat:
@@ -324,15 +333,18 @@ private:
     {
         std::array<float, DELAY_MAX> buf {};
         int wp = 0;
-        void reset() { buf.fill (0.0f); wp = 0; }
-        float process (float in, float len, float fb)
+        float lpState = 0.0f;
+        void reset() { buf.fill (0.0f); wp = 0; lpState = 0.0f; }
+        float process (float in, float len, float fb, float tone = 0.5f)
         {
             float rp = (float) wp - len;
             while (rp < 0.0f) rp += (float) DELAY_MAX;
             const int i0 = (int) rp; const int i1 = (i0 + 1) % DELAY_MAX;
             const float fr = rp - (float) i0;
             const float d = buf[(size_t) i0] + (buf[(size_t) i1] - buf[(size_t) i0]) * fr;
-            buf[(size_t) wp] = in + d * fb;
+            const float alpha = 0.1f + tone * 0.8f;
+            lpState = lpState + alpha * (d - lpState);
+            buf[(size_t) wp] = in + lpState * fb;
             wp = (wp + 1) % DELAY_MAX;
             return d;
         }
@@ -342,13 +354,17 @@ private:
     {
         std::array<float, CHORUS_MAX> buf {};
         int wp = 0;
-        double ph = 0.0;
-        void reset() { buf.fill (0.0f); wp = 0; ph = 0.0; }
+        double ph1 = 0.0, ph2 = 0.0;
+        void reset() { buf.fill (0.0f); wp = 0; ph1 = ph2 = 0.0; }
         float process (float in, float rate, float depth, float mix, double sampleRate, float phaseOffset)
         {
-            ph += rate / sampleRate; if (ph >= 1.0) ph -= 1.0;
-            double p = ph + phaseOffset; if (p >= 1.0) p -= 1.0;
-            const float lfo = std::sin (6.2831853f * (float) p);
+            ph1 += rate / sampleRate; if (ph1 >= 1.0) ph1 -= 1.0;
+            ph2 += (rate * 0.71) / sampleRate; if (ph2 >= 1.0) ph2 -= 1.0;
+            double p1 = ph1 + phaseOffset; if (p1 >= 1.0) p1 -= 1.0;
+            double p2 = ph2 + phaseOffset * 1.3; if (p2 >= 1.0) p2 -= 1.0;
+            const float lfo1 = std::sin (6.2831853f * (float) p1);
+            const float lfo2 = std::sin (6.2831853f * (float) p2);
+            const float lfo = lfo1 * 0.6f + lfo2 * 0.4f;
             float len = (0.008f + lfo * depth * 0.004f) * (float) sampleRate;
             len = juce::jlimit (1.0f, (float) (CHORUS_MAX - 2), len);
             float rp = (float) wp - len;
@@ -365,42 +381,46 @@ private:
     struct Reverb
     {
         static constexpr int CMAX = 4096, AMAX = 2048;
-        std::array<float, CMAX> c[4] {};
-        std::array<float, AMAX> a[2] {};
-        int cl[4] { 1116, 1188, 1277, 1356 }, cp[4] { 0, 0, 0, 0 };
-        int al[2] { 556, 441 }, ap[2] { 0, 0 };
-        float cd[4] { 0, 0, 0, 0 };
+        std::array<float, CMAX> c[8] {};
+        std::array<float, AMAX> a[4] {};
+        int cl[8] { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+        int cp[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
+        int al[4] { 225, 556, 441, 341 };
+        int ap[4] { 0, 0, 0, 0 };
+        float cd[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
+        float lp[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
+
         void prepare (double sampleRate)
         {
             const float s = (float) (sampleRate / 44100.0);
-            const int base[4] { 1116, 1188, 1277, 1356 };
-            const int ab[2] { 556, 441 };
-            for (int i = 0; i < 4; ++i) cl[i] = juce::jlimit (1, CMAX - 1, (int) (base[i] * s));
-            for (int i = 0; i < 2; ++i) al[i] = juce::jlimit (1, AMAX - 1, (int) (ab[i] * s));
+            const int baseC[8] { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+            const int baseA[4] { 225, 556, 441, 341 };
+            for (int i = 0; i < 8; ++i) cl[i] = juce::jlimit (1, CMAX - 1, (int) (baseC[i] * s));
+            for (int i = 0; i < 4; ++i) al[i] = juce::jlimit (1, AMAX - 1, (int) (baseA[i] * s));
             reset();
         }
         void reset()
         {
             for (auto& x : c) x.fill (0.0f);
             for (auto& x : a) x.fill (0.0f);
-            for (int i = 0; i < 4; ++i) { cp[i] = 0; cd[i] = 0.0f; }
-            for (int i = 0; i < 2; ++i) ap[i] = 0;
+            for (int i = 0; i < 8; ++i) { cp[i] = 0; cd[i] = 0.0f; lp[i] = 0.0f; }
+            for (int i = 0; i < 4; ++i) ap[i] = 0;
         }
         float process (float in, float decay, float mix)
         {
             const float fb = 0.55f + decay * 0.42f;
-            const float damp = 0.35f;
+            const float damp = 0.2f + decay * 0.5f;
             float acc = 0.0f;
-            for (int i = 0; i < 4; ++i)
+            for (int i = 0; i < 8; ++i)
             {
                 const float out = c[(size_t) i][(size_t) cp[i]];
-                cd[i] = out * (1.0f - damp) + cd[i] * damp;
-                c[(size_t) i][(size_t) cp[i]] = in + cd[i] * fb;
+                lp[i] = out * (1.0f - damp) + lp[i] * damp;
+                c[(size_t) i][(size_t) cp[i]] = in + lp[i] * fb;
                 cp[i] = (cp[i] + 1) % cl[i];
                 acc += out;
             }
-            acc *= 0.25f;
-            for (int i = 0; i < 2; ++i)
+            acc *= 0.125f;
+            for (int i = 0; i < 4; ++i)
             {
                 const float bo = a[(size_t) i][(size_t) ap[i]];
                 const float v = acc - bo * 0.5f;
@@ -435,7 +455,6 @@ private:
         return 0.0f;
     }
 
-    // === OSC С ПОДДЕРЖКОЙ PWM ===
     static inline float osc (float ph, float dt, Waveform w, float pwm = 0.5f)
     {
         switch (w)
