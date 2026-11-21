@@ -54,6 +54,7 @@ private:
         bool active = false;
         int midiNote = -1;
         float velocity = 0.0f;
+        float voiceDetune = 0.0f; // Для Unison
         
         double phase1 = 0.0, phaseInc1 = 0.0;
         double phase2 = 0.0, phaseInc2 = 0.0;
@@ -63,7 +64,6 @@ private:
 
         juce::ADSR adsr;
         juce::ADSR::Parameters adsrParams;
-        
         juce::ADSR filterAdsr;
         juce::ADSR::Parameters filterAdsrParams;
         
@@ -71,17 +71,20 @@ private:
         double lfoPhaseInc = 0.0;
         float lfoSHValue = 0.0f;
 
-        void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount, float lfoRateHz, float vel)
+        void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount, float lfoRateHz, float vel, float unisonSpread)
         {
             active = true;
             velocity = vel;
-            driftOffset = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * 2.0f * analogDriftAmount * 0.015f;
             
-            float freq1 = frequency * (1.0f + driftOffset);
-            float freq2 = frequency * std::pow(2.0f, (detuneSemitones + driftOffset) / 12.0f);
-            float freqSub = (frequency * 0.5f) * (1.0f + driftOffset);
+            // Аналоговый дрейф + Unison-расстройка для каждого голоса своя
+            driftOffset = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * 2.0f * analogDriftAmount * 0.015f;
+            voiceDetune = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * unisonSpread;
+            
+            float freqBase = frequency * (1.0f + driftOffset + voiceDetune);
+            float freq2 = frequency * std::pow(2.0f, (detuneSemitones + driftOffset + voiceDetune) / 12.0f);
+            float freqSub = (frequency * 0.5f) * (1.0f + driftOffset + voiceDetune);
 
-            phaseInc1 = freq1 / sampleRate;
+            phaseInc1 = freqBase / sampleRate;
             phaseInc2 = freq2 / sampleRate;
             phaseIncSub = freqSub / sampleRate;
             
@@ -96,10 +99,7 @@ private:
             filterAdsr.noteOn();
         }
 
-        void noteOff() { 
-            adsr.noteOff(); 
-            filterAdsr.noteOff(); 
-        }
+        void noteOff() { adsr.noteOff(); filterAdsr.noteOff(); }
     };
 
     std::array<Voice, MAX_VOICES> voices;
@@ -120,18 +120,15 @@ private:
     {
         float low = 0.0f, band = 0.0f, high = 0.0f;
         void reset() { low = band = high = 0.0f; }
-        
         float process (float input, float cutoffNorm, float resonance, float drive, FilterType type)
         {
             float freq = 2.0f * std::sin (juce::MathConstants<float>::pi * cutoffNorm * 0.499f);
             float q = 1.0f - juce::jlimit (0.01f, 0.99f, resonance);
             float inputWithDrive = std::tanh (input * (1.0f + drive * 3.0f));
-            
             low  += freq * band;
             high  = inputWithDrive - low - q * band;
             band += freq * high;
             band = std::tanh (band * (1.0f + drive * 0.5f));
-            
             switch (type)
             {
                 case FilterType::LP12: return low;
@@ -149,48 +146,37 @@ private:
     {
         std::array<float, MAX_DELAY_SAMPLES> buffer {};
         int writePos = 0;
-        
         void reset() { buffer.fill (0.0f); writePos = 0; }
-        
         float process (float input, int delaySamples, float feedback)
         {
             int readPos = writePos - delaySamples;
             if (readPos < 0) readPos += MAX_DELAY_SAMPLES;
-            
             float delayed = buffer[readPos];
             buffer[writePos] = input + delayed * feedback;
-            
             writePos++;
             if (writePos >= MAX_DELAY_SAMPLES) writePos = 0;
             return delayed;
         }
     };
     
-    // ✅ ИСПРАВЛЕНО: sampleRate теперь передаётся как параметр, а не берётся из внешнего класса
     struct ChorusEffect
     {
         std::array<float, MAX_DELAY_SAMPLES> buffer {};
         int writePos = 0;
         double lfoPhase = 0.0;
-        
         void reset() { buffer.fill (0.0f); writePos = 0; lfoPhase = 0.0; }
-        
         float process (float input, float rate, float depth, float mix, double sampleRate)
         {
             float lfoValue = std::sin (2.0f * juce::MathConstants<float>::pi * (float)lfoPhase);
             lfoPhase += rate / sampleRate;
             if (lfoPhase >= 1.0) lfoPhase -= 1.0;
-            
             float baseDelay = 0.01f * (float)sampleRate;
             float modDelay = baseDelay + lfoValue * depth * 0.005f * (float)sampleRate;
-            
             int readPos = writePos - (int)modDelay;
             if (readPos < 0) readPos += MAX_DELAY_SAMPLES;
-            
             buffer[writePos] = input;
             writePos++;
             if (writePos >= MAX_DELAY_SAMPLES) writePos = 0;
-            
             float wet = buffer[readPos];
             return input * (1.0f - mix) + wet * mix;
         }
@@ -198,27 +184,17 @@ private:
     
     struct ReverbEffect
     {
-        std::array<float, 1200> comb1 {};
-        std::array<float, 1600> comb2 {};
-        std::array<float, 2000> comb3 {};
-        std::array<float, 2400> comb4 {};
+        std::array<float, 1200> comb1 {}; std::array<float, 1600> comb2 {};
+        std::array<float, 2000> comb3 {}; std::array<float, 2400> comb4 {};
         int pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-        
-        void reset()
-        {
-            comb1.fill (0.0f); comb2.fill (0.0f); comb3.fill (0.0f); comb4.fill (0.0f);
-            pos1 = pos2 = pos3 = pos4 = 0;
-        }
-        
+        void reset() { comb1.fill(0.0f); comb2.fill(0.0f); comb3.fill(0.0f); comb4.fill(0.0f); pos1=pos2=pos3=pos4=0; }
         float process (float input, float decay, float mix)
         {
             float feedback = juce::jlimit (0.0f, 0.95f, decay);
-            
             float out1 = comb1[pos1]; comb1[pos1] = input + out1 * feedback; pos1 = (pos1 + 1) % comb1.size();
             float out2 = comb2[pos2]; comb2[pos2] = input + out2 * feedback; pos2 = (pos2 + 1) % comb2.size();
             float out3 = comb3[pos3]; comb3[pos3] = input + out3 * feedback; pos3 = (pos3 + 1) % comb3.size();
             float out4 = comb4[pos4]; comb4[pos4] = input + out4 * feedback; pos4 = (pos4 + 1) % comb4.size();
-            
             float wet = (out1 + out2 + out3 + out4) * 0.25f;
             return input * (1.0f - mix) + wet * mix;
         }
