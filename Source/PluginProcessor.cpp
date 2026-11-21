@@ -80,7 +80,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("filterType",  "Filter Type",    ftypes, 0));
     p.push_back (std::make_unique<juce::AudioParameterChoice> ("lfoWaveform", "LFO Waveform",   lwaves, 0));
 
-    // DRUM MACHINE (Stage 14)
+    // DRUM MACHINE
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumVol",   "DRUM VOL", 0.0f, 1.0f, 0.8f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumDrive", "DRUM DRV", 0.0f, 1.0f, 0.0f));
 
@@ -237,10 +237,10 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 {
                     if (note == drumMidiNotes[d])
                     {
-                        const float lvl   = sm[DrumVol + 2 + d * 4].next();
-                        const float tune  = sm[DrumVol + 3 + d * 4].next();
-                        const float decay = sm[DrumVol + 4 + d * 4].next();
-                        const float tone  = sm[DrumVol + 5 + d * 4].next();
+                        const float lvl   = sm[DrumVol + 2 + d * 4].v.getCurrentValue();
+                        const float tune  = sm[DrumVol + 3 + d * 4].v.getCurrentValue();
+                        const float decay = sm[DrumVol + 4 + d * 4].v.getCurrentValue();
+                        const float tone  = sm[DrumVol + 5 + d * 4].v.getCurrentValue();
                         drums[(size_t) d].trigger (vel, lvl, tune, decay, tone);
                         isDrum = true;
                         break;
@@ -397,6 +397,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             mixR += s * v.panR;
         }
 
+        // === DRUM MACHINE RENDER ===
         float drumL = 0.0f, drumR = 0.0f;
         for (int d = 0; d < NUM_DRUMS; ++d)
         {
@@ -404,6 +405,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             drumL += s * 0.7071f;
             drumR += s * 0.7071f;
         }
+        
         const float drumDriveVal = pv[DrumDrive];
         if (drumDriveVal > 0.0001f)
         {
@@ -412,15 +414,14 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             drumL = std::tanh (drumL * d) * comp;
             drumR = std::tanh (drumR * d) * comp;
         }
-        mixL += drumL;
-        mixR += drumR;
 
         const float target = 1.0f / std::sqrt ((float) juce::jmax (1, activeCount));
         normGain += 0.0015f * (target - normGain);
         const float gain = normGain * pv[Volume] * juce::jlimit (0.0f, 2.0f, 1.0f + volMod);
+        const float drumGain = pv[DrumVol] * pv[Volume];
 
-        float dryL = mixL * gain;
-        float dryR = mixR * gain;
+        float dryL = mixL * gain + drumL * drumGain;
+        float dryR = mixR * gain + drumR * drumGain;
 
         if (mDrive > 0.0001f)
         {
