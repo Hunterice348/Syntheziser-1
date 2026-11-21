@@ -30,12 +30,24 @@ public:
 
     enum class Waveform { Sine = 0, Saw, Square, Triangle };
     enum class FilterType { LP12 = 0, LP24, HP, BP };
+    
+    // SEMI-MODULAR ENGINE (Stage 10)
+    enum class ModSource { None = 0, LFO, FilterEnv, Velocity, ModWheel, Osc1Audio, NoiseAudio, NumSources };
+    enum class ModDest { None = 0, FilterCutoff, Osc1Pitch, Osc2Pitch, MasterVol, FilterRes, NumDests };
+
+    struct PatchCable {
+        bool active = false;
+        ModSource source = ModSource::None;
+        ModDest destination = ModDest::None;
+        float amount = 0.5f;
+    };
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState parameters;
 
     static constexpr int MAX_VOICES = 16;
+    static constexpr int NUM_PATCH_CABLES = 4;
     
     struct Voice
     {
@@ -91,6 +103,7 @@ private:
     };
 
     std::array<Voice, MAX_VOICES> voices;
+    std::array<PatchCable, NUM_PATCH_CABLES> patchCables;
     
     Waveform currentWaveform1 = Waveform::Sine;
     Waveform currentWaveform2 = Waveform::Saw;
