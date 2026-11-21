@@ -60,6 +60,10 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSlider (reverbDecaySlider); addAndMakeVisible (reverbDecaySlider);
     setupSlider (reverbMixSlider); addAndMakeVisible (reverbMixSlider);
 
+    // STAGE 12 SLIDERS
+    setupSlider (unisonSpreadSlider); addAndMakeVisible (unisonSpreadSlider);
+    setupSlider (macroMorphSlider); addAndMakeVisible (macroMorphSlider);
+
     fxBypassButton.setButtonText ("FX BYPASS");
     fxBypassButton.setColour (juce::ToggleButton::textColourId, juce::Colours::white);
     addAndMakeVisible (fxBypassButton);
@@ -129,15 +133,12 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     patch1SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch0Src", patch1SrcBox);
     patch1DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch0Dst", patch1DstBox);
     patch1AmtAtt = std::make_unique<Attachment> (parameters, "patch0Amt", patch1AmtSlider);
-    
     patch2SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch1Src", patch2SrcBox);
     patch2DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch1Dst", patch2DstBox);
     patch2AmtAtt = std::make_unique<Attachment> (parameters, "patch1Amt", patch2AmtSlider);
-    
     patch3SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch2Src", patch3SrcBox);
     patch3DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch2Dst", patch3DstBox);
     patch3AmtAtt = std::make_unique<Attachment> (parameters, "patch2Amt", patch3AmtSlider);
-    
     patch4SrcAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch3Src", patch4SrcBox);
     patch4DstAtt = std::make_unique<ComboBoxAttachment> (parameters, "patch3Dst", patch4DstBox);
     patch4AmtAtt = std::make_unique<Attachment> (parameters, "patch3Amt", patch4AmtSlider);
@@ -153,6 +154,9 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     reverbDecayAtt = std::make_unique<Attachment> (parameters, "reverbDecay", reverbDecaySlider);
     reverbMixAtt = std::make_unique<Attachment> (parameters, "reverbMix", reverbMixSlider);
     fxBypassAtt = std::make_unique<ButtonAttachment> (parameters, "fxBypass", fxBypassButton);
+
+    unisonSpreadAtt = std::make_unique<Attachment> (parameters, "unisonSpread", unisonSpreadSlider);
+    macroMorphAtt = std::make_unique<Attachment> (parameters, "macroMorph", macroMorphSlider);
     
     wf1Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform1", waveform1Box);
     wf2Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform2", waveform2Box);
@@ -171,7 +175,6 @@ void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xFFB41E28));
     g.fillRect (0, 40, getWidth(), 2);
     
-    // ✅ ИСПРАВЛЕНО: рисование секции эффектов перенесено сюда из resized()
     auto fxArea = getLocalBounds().reduced (15).removeFromTop (380).removeFromBottom (200);
     g.setColour (juce::Colour (0xFF2A2A32));
     g.fillRect (fxArea);
@@ -212,20 +215,16 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     
     auto patchArea = area.removeFromLeft (220);
     patchArea.removeFromTop (10);
-    
     auto rowH = 60;
     patch1SrcBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
     patch1DstBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
     patch1AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (3, 0));
-    
     patch2SrcBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
     patch2DstBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
     patch2AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (3, 0));
-    
     patch3SrcBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
     patch3DstBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
     patch3AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (3, 0));
-    
     patch4SrcBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
     patch4DstBox.setBounds (patchArea.removeFromTop (22).reduced (3, 0));
     patch4AmtSlider.setBounds (patchArea.removeFromTop (rowH).reduced (3, 0));
@@ -240,4 +239,10 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     analogDriftSlider.setBounds (masterArea.removeFromLeft (33));
     masterDriveSlider.setBounds (masterArea.removeFromLeft (33));
     volumeSlider.setBounds (masterArea.removeFromLeft (33));
+
+    // STAGE 12 LAYOUT
+    auto stage12Area = getLocalBounds().reduced (15).removeFromBottom (80);
+    unisonSpreadSlider.setBounds (stage12Area.removeFromLeft (100));
+    macroMorphSlider.setBounds (stage12Area.removeFromLeft (150));
+    fxBypassButton.setBounds (stage12Area.reduced (20));
 }
