@@ -194,18 +194,17 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     for (const auto metadata : midiMessages)
     {
         auto msg = metadata.getMessage();
-        if (msg.isController())
+        
+        // Обработка Mod Wheel (MIDI CC 1)
+        if (msg.isController() && msg.getControllerNumber() == 1)
         {
-            if (msg.getControllerNumber() == 1) // Mod Wheel
-            {
-                currentModWheel = msg.getControllerValue() / 127.0f;
-            }
+            currentModWheel = msg.getControllerValue() / 127.0f;
         }
         else if (msg.isNoteOn() && msg.getVelocity() > 0)
         {
             int note = msg.getNoteNumber();
             float freq = (float) juce::MidiMessage::getMidiNoteInHertz (note);
-            float vel = msg.getVelocity() / 127.0f;
+            float vel = msg.getVelocity() / 127.0f; // ⚠️ ИЗВЛЕКАЕМ VELOCITY
             
             int voiceIndex = -1;
             for (int i = 0; i < MAX_VOICES; ++i)
@@ -213,6 +212,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             
             if (voiceIndex == -1) voiceIndex = 0;
                 
+            // ⚠️ ЗДЕСЬ ДОЛЖНО БЫТЬ 6 АРГУМЕНТОВ:
             voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift, lfoRate, vel);
             voices[voiceIndex].midiNote = note;
             lastNotePlayed = note;
@@ -276,7 +276,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
                 // --- MODULATION MATRIX APPLICATION ---
                 // 1. LFO -> Pitch
-                float pitchMod = lfoValue * modLfoToPitch * 0.05f; // ±5% max pitch modulation
+                float pitchMod = lfoValue * modLfoToPitch * 0.05f;
                 
                 // 2. Envelope -> Pitch
                 pitchMod += (fEnv - 0.5f) * modEnvToPitch * 0.05f;
@@ -285,7 +285,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 float velMod = (voices[v].velocity - 0.5f) * modVelToCutoff * 0.5f;
 
                 // 4. Mod Wheel -> Cutoff
-                float wheelMod = (currentModWheel - 0.5f) * 0.5f; // Simple routing for demonstration
+                float wheelMod = (currentModWheel - 0.5f) * 0.5f;
 
                 // Apply pitch modulation to phase increment
                 float modulatedPhaseInc1 = voices[v].phaseInc1 * (1.0f + pitchMod);
