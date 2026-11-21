@@ -8,7 +8,10 @@ HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
     drums[3].type = DrumVoice::Clap; drums[4].type = DrumVoice::Tom; drums[5].type = DrumVoice::Perc;
 }
 
-bool HuntericeAbyssAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const { const auto& out = l.getMainOutputChannelSet(); return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo(); }
+bool HuntericeAbyssAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const { 
+    const auto& out = l.getMainOutputChannelSet(); 
+    return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo(); 
+}
 
 juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor::createParameterLayout()
 {
@@ -75,6 +78,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
 
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumVol", "DRUM VOL", 0.0f, 1.0f, 0.8f));
     p.push_back (std::make_unique<juce::AudioParameterFloat> ("drumDrive", "DRUM DRV", 0.0f, 1.0f, 0.0f));
+    
     const juce::StringArray drumNames { "KICK", "SNARE", "HI-HAT", "CLAP", "TOM", "PERC" };
     for (int i = 0; i < NUM_DRUMS; ++i) {
         const juce::String prefix = drumNames[i].toLowerCase().replaceCharacter ('-', '_');
@@ -101,14 +105,22 @@ void HuntericeAbyssAudioProcessor::resetDsp() {
 }
 
 void HuntericeAbyssAudioProcessor::allNotesOff (bool force) {
-    for (auto& v : voices) { if (!v.active) continue; if (force) { v.active = false; v.ampEnv.reset(); v.filterEnv.reset(); } else { v.releasing = true; v.sustained = false; v.ampEnv.noteOff(); v.filterEnv.noteOff(); } }
+    for (auto& v : voices) { 
+        if (!v.active) continue; 
+        if (force) { v.active = false; v.ampEnv.reset(); v.filterEnv.reset(); } 
+        else { v.releasing = true; v.sustained = false; v.ampEnv.noteOff(); v.filterEnv.noteOff(); } 
+    }
     for (auto& d : drums) d.active = false;
 }
 
 void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int) {
     sr = (sampleRate > 0.0 ? sampleRate : 44100.0);
     static const char* ids[NumSmooth] = { "volume", "osc2Level", "osc2Detune", "subLevel", "noiseLevel", "masterDrive", "filterCutoff", "filterResonance", "filterDrive", "filterKeyTrack", "filterEnvAmount", "lfoRate", "lfoDepth", "modLfoToPitch", "modLfoToCutoff", "modEnvToPitch", "modVelToCutoff", "distDrive", "distMix", "chorusRate", "chorusDepth", "chorusMix", "delayTime", "delayFeedback", "delayMix", "reverbDecay", "reverbMix", "unisonSpread", "macroMorph", "patch0Amt", "patch1Amt", "patch2Amt", "patch3Amt", "drumVol", "drumDrive", "kickLvl", "kickTune", "kickDecay", "kickTone", "kickBody", "kickPitchAmt", "snareLvl", "snareTune", "snareDecay", "snareTone", "snareSnap", "snareBody", "hi_hatLvl", "hi_hatTune", "hi_hatDecay", "hi_hatTone", "clapLvl", "clapTune", "clapDecay", "clapTone", "tomLvl", "tomTune", "tomDecay", "tomTone", "percLvl", "percTune", "percDecay", "percTone", "glide", "velToAmp", "ringModMix" };
-    for (int i = 0; i < NumSmooth; ++i) sm[(size_t)i].prepare (sr, (i == DelayTime ? 0.15 : 0.03), parameters.getRawParameterValue (ids[i]));
+    
+    for (int i = 0; i < NumSmooth; ++i) {
+        const double ramp = (i == DelayTime ? 0.15 : 0.03);
+        sm[(size_t)i].prepare (sr, ramp, parameters.getRawParameterValue (ids[i]));
+    }
     bend.reset (sr, 0.01); bend.setCurrentAndTargetValue (0.0f);
     reverbL.prepare (sr); reverbR.prepare (sr); resetDsp();
     for (auto& v : voices) { v.ampEnv.setSampleRate (sr); v.filterEnv.setSampleRate (sr); }
@@ -129,6 +141,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const int lw = juce::jlimit (0, 4, (int) parameters.getRawParameterValue ("lfoWaveform")->load());
     lfoSH = (lw == 4); lfoWf = (Waveform) (lw == 1 ? 3 : (lw == 2 ? 1 : (lw == 3 ? 2 : 0)));
     const bool bypass = parameters.getRawParameterValue ("fxBypass")->load() > 0.5f;
+    
     const int unisonVoices = juce::jlimit (1, MAX_UNISON, (int) parameters.getRawParameterValue ("unisonVoices")->load());
     const float pwmWidth = parameters.getRawParameterValue ("pwmWidth")->load();
     const float glideAmt = parameters.getRawParameterValue ("glide")->load();
@@ -141,8 +154,15 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         for (int step = 0; step < SEQ_STEPS; ++step)
             sequencer.steps[pad][step] = parameters.getRawParameterValue ("step" + juce::String (pad) + "_" + juce::String (step))->load() > 0.5f;
 
+    // === АБСОЛЮТНАЯ ЗАЩИТА ОТ ДЕЛЕНИЯ НА НОЛЬ И КРАШЕЙ ХОСТА ===
     double bpm = 120.0;
-    if (auto ph = getPlayHead()) if (auto pos = ph->getPosition()) if (pos->getBpm()) bpm = *pos->getBpm();
+    if (auto ph = getPlayHead()) {
+        if (auto pos = ph->getPosition()) {
+            if (auto bpmOpt = pos->getBpm()) {
+                bpm = juce::jmax(10.0, *bpmOpt); // Защита от 0 или отрицательного BPM
+            }
+        }
+    }
     sequencer.update (sr, bpm);
 
     juce::ADSR::Parameters ap, fp;
@@ -179,10 +199,14 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             if (msg.isController()) {
                 const int cc = msg.getControllerNumber();
                 if (cc == 1) modWheel = msg.getControllerValue() / 127.0f;
-                if (cc == 64) { sustainPedal = msg.getControllerValue() >= 64; if (!sustainPedal) for (auto& v : voices) if (v.active && v.sustained) { v.sustained = false; v.releasing = true; v.ampEnv.noteOff(); v.filterEnv.noteOff(); } }
+                if (cc == 64) { 
+                    sustainPedal = msg.getControllerValue() >= 64; 
+                    if (!sustainPedal) for (auto& v : voices) if (v.active && v.sustained) { v.sustained = false; v.releasing = true; v.ampEnv.noteOff(); v.filterEnv.noteOff(); } 
+                }
                 if (cc == 120 || cc == 123) allNotesOff (cc == 120);
-            } else if (msg.isPitchWheel()) bend.setTargetValue (((float) msg.getPitchWheelValue() - 8192.0f) / 8192.0f * 2.0f);
-            else if (msg.isNoteOn() && msg.getVelocity() > 0) {
+            } else if (msg.isPitchWheel()) {
+                bend.setTargetValue (((float) msg.getPitchWheelValue() - 8192.0f) / 8192.0f * 2.0f);
+            } else if (msg.isNoteOn() && msg.getVelocity() > 0) {
                 const int note = msg.getNoteNumber(); const float vel = msg.getVelocity() / 127.0f;
                 bool isDrum = false;
                 for (int d = 0; d < NUM_DRUMS; ++d) {
@@ -251,7 +275,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     case ModDest::Osc1Pitch: case ModDest::Osc2Pitch: pitchMod += a * 0.05f; break;
                     case ModDest::MasterVol: volMod += a; break;
                     case ModDest::FilterRes: resMod += a; break;
-                    case ModDest::RingModMix: /* handled below */ break;
                     default: break;
                 }
             }
@@ -294,7 +317,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             const float Q = 0.5f + std::pow (juce::jlimit (0.0f, 1.0f, res + resMod), 2.0f) * 24.5f;
             const float k = juce::jlimit (0.04f, 2.0f, 1.0f / Q);
 
-            // === RING MODULATOR LOGIC ===
             float sig = o1 + o2 * osc2Level + sb * subLevel * 0.8f + nz * noiseMix * 0.5f;
             float ringModSignal = o1 * o2 * ringMix;
             sig = sig * (1.0f - ringMix) + ringModSignal;
