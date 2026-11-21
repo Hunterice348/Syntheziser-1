@@ -37,6 +37,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("subLevel", "Sub Level", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("noiseLevel", "Noise Level", 0.0f, 1.0f, 0.0f));
     
+    // Analog Modeling Parameters
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("analogDrift", "Analog Drift", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> ("masterDrive", "Master Drive", 0.0f, 1.0f, 0.0f));
+    
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform1", "Osc 1 Waveform", waveforms, 0));
     params.push_back (std::make_unique<juce::AudioParameterChoice> ("waveform2", "Osc 2 Waveform", waveforms, 1));
@@ -47,6 +51,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
 void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
+    smoothedDrive.reset (sampleRate, 0.05); // 50ms сглаживание для Drive
+    
     for (auto& voice : voices)
     {
         voice.adsr.setSampleRate (sampleRate);
@@ -94,6 +100,10 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     float osc2Detune = parameters.getRawParameterValue ("osc2Detune")->load();
     float subLevel = parameters.getRawParameterValue ("subLevel")->load();
     float noiseLevel = parameters.getRawParameterValue ("noiseLevel")->load();
+    float analogDrift = parameters.getRawParameterValue ("analogDrift")->load();
+    float masterDrive = parameters.getRawParameterValue ("masterDrive")->load();
+    
+    smoothedDrive.setTargetValue (masterDrive);
     
     int wf1 = static_cast<int> (parameters.getRawParameterValue ("waveform1")->load());
     int wf2 = static_cast<int> (parameters.getRawParameterValue ("waveform2")->load());
@@ -123,7 +133,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             
             if (voiceIndex == -1) voiceIndex = 0;
                 
-            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune);
+            voices[voiceIndex].noteOn (freq, currentSampleRate, osc2Detune, analogDrift);
             voices[voiceIndex].midiNote = note;
         }
         else if (msg.isNoteOff() || (msg.isNoteOn() && msg.getVelocity() == 0))
@@ -143,6 +153,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float mix = 0.0f;
+            float currentDrive = smoothedDrive.getNextValue();
 
             for (int v = 0; v < MAX_VOICES; ++v)
             {
@@ -184,7 +195,17 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 mix += (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * noiseLevel)) * env;
             }
 
-            channelData[sample] = mix * volume;
+            // Analog Saturation (Soft Clipping via tanh)
+            float driveMultiplier = 1.0f + (currentDrive * 4.0f);
+            float saturatedMix = std::tanh (mix * driveMultiplier);
+            
+            // Компенсация громкости при насыщении
+            float compensation = 1.0f / std::tanh (driveMultiplier);
+            if (driveMultiplier > 1.0f) {
+                saturatedMix *= compensation;
+            }
+
+            channelData[sample] = saturatedMix * volume;
         }
     }
 }
