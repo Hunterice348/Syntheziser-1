@@ -30,7 +30,6 @@ private:
 
     AbyssLookAndFeel abyssLF;
     float scaleFactor = 1.0f;
-    
     static constexpr float BASE_WIDTH  = 1400.0f;
     static constexpr float BASE_HEIGHT = 820.0f;
     static constexpr float MIN_SCALE   = 0.5f;
@@ -61,6 +60,10 @@ private:
 
     juce::Slider unisonSpreadSlider;
     juce::Slider macroMorphSlider;
+
+    // === НОВЫЕ СЛАЙДЕРЫ: ЮНИСОН + PWM ===
+    juce::Slider unisonVoicesSlider;
+    juce::Slider pwmWidthSlider;
 
     juce::ComboBox waveform1Box, waveform2Box, filterTypeBox, lfoWaveformBox;
 
@@ -93,6 +96,10 @@ private:
     juce::Label patch2SrcLabel, patch2DstLabel;
     juce::Label patch3SrcLabel, patch3DstLabel;
     juce::Label patch4SrcLabel, patch4DstLabel;
+    
+    // === НОВЫЕ ЛЕЙБЛЫ ===
+    juce::Label unisonVoicesLabel;
+    juce::Label pwmWidthLabel;
     
     juce::Label drumVolLabel, drumDriveLabel;
     juce::Label kickLvlLabel, kickTuneLabel, kickDecayLabel, kickToneLabel;
@@ -127,6 +134,10 @@ private:
 
     std::unique_ptr<Attachment> unisonSpreadAtt;
     std::unique_ptr<Attachment> macroMorphAtt;
+
+    // === НОВЫЕ АТТАЧМЕНТЫ ===
+    std::unique_ptr<Attachment> unisonVoicesAtt;
+    std::unique_ptr<Attachment> pwmWidthAtt;
 
     std::unique_ptr<ComboBoxAttachment> wf1Att, wf2Att, filterTypeAtt, lfoWaveformAtt;
 
