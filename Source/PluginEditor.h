@@ -15,6 +15,7 @@ private:
     HuntericeAbyssAudioProcessor& audioProcessor;
     juce::AudioProcessorValueTreeState& parameters;
 
+    // --- СЛАЙДЕРЫ ---
     juce::Slider attackSlider, decaySlider, sustainSlider, releaseSlider, volumeSlider;
     juce::Slider osc2LevelSlider, osc2DetuneSlider, subLevelSlider, noiseLevelSlider;
     juce::Slider analogDriftSlider, masterDriveSlider;
@@ -38,6 +39,30 @@ private:
     juce::Slider macroMorphSlider;
 
     juce::ComboBox waveform1Box, waveform2Box, filterTypeBox, lfoWaveformBox;
+
+    // --- LABEL'Ы ДЛЯ ПОДПИСЕЙ (Stage 13.1) ---
+    juce::Label sectionOsc, sectionFilter, sectionEnv, sectionLfo;
+    juce::Label sectionMod, sectionPatch, sectionFx, sectionMaster;
+    
+    juce::Label attackLabel, decayLabel, sustainLabel, releaseLabel, volumeLabel;
+    juce::Label osc2LevelLabel, osc2DetuneLabel, subLevelLabel, noiseLevelLabel;
+    juce::Label analogDriftLabel, masterDriveLabel;
+    juce::Label filterCutoffLabel, filterResonanceLabel, filterDriveLabel, filterKeyTrackLabel;
+    juce::Label filterAttackLabel, filterDecayLabel, filterSustainLabel, filterReleaseLabel, filterEnvAmountLabel;
+    juce::Label lfoRateLabel, lfoDepthLabel;
+    juce::Label modLfoToPitchLabel, modLfoToCutoffLabel, modEnvToPitchLabel, modVelToCutoffLabel;
+    juce::Label patch1AmtLabel, patch2AmtLabel, patch3AmtLabel, patch4AmtLabel;
+    juce::Label distDriveLabel, distMixLabel;
+    juce::Label chorusRateLabel, chorusDepthLabel, chorusMixLabel;
+    juce::Label delayTimeLabel, delayFeedbackLabel, delayMixLabel;
+    juce::Label reverbDecayLabel, reverbMixLabel;
+    juce::Label unisonSpreadLabel, macroMorphLabel;
+    
+    juce::Label waveform1Label, waveform2Label, filterTypeLabel, lfoWaveformLabel;
+    juce::Label patch1SrcLabel, patch1DstLabel;
+    juce::Label patch2SrcLabel, patch2DstLabel;
+    juce::Label patch3SrcLabel, patch3DstLabel;
+    juce::Label patch4SrcLabel, patch4DstLabel;
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
