@@ -28,7 +28,6 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    // ПЕРЕМЕЩЕНО В PUBLIC, чтобы было доступно в .cpp файле
     enum class Waveform { Sine = 0, Saw, Square, Triangle };
 
 private:
@@ -42,31 +41,31 @@ private:
         bool active = false;
         int midiNote = -1;
         
-        double phase1 = 0.0;
-        double phaseInc1 = 0.0;
-        double phase2 = 0.0;
-        double phaseInc2 = 0.0;
-        double phaseSub = 0.0;
-        double phaseIncSub = 0.0;
+        double phase1 = 0.0, phaseInc1 = 0.0;
+        double phase2 = 0.0, phaseInc2 = 0.0;
+        double phaseSub = 0.0, phaseIncSub = 0.0;
         float noiseState = 0.0f;
+        float driftOffset = 0.0f; // Для аналогового дрейфа
 
         juce::ADSR adsr;
         juce::ADSR::Parameters adsrParams;
 
-        void noteOn (float frequency, double sampleRate, float detuneSemitones)
+        void noteOn (float frequency, double sampleRate, float detuneSemitones, float analogDriftAmount)
         {
             active = true;
-            float freq2 = frequency * std::pow(2.0f, detuneSemitones / 12.0f);
-            float freqSub = frequency * 0.5f;
+            // Случайный дрейф высоты тона (до ±1.5 центов) для имитации аналоговой нестабильности
+            driftOffset = (juce::Random::getSystemRandom().nextFloat() - 0.5f) * 2.0f * analogDriftAmount * 0.015f;
+            
+            float freq1 = frequency * (1.0f + driftOffset);
+            float freq2 = frequency * std::pow(2.0f, (detuneSemitones + driftOffset) / 12.0f);
+            float freqSub = (frequency * 0.5f) * (1.0f + driftOffset);
 
-            phaseInc1 = frequency / sampleRate;
+            phaseInc1 = freq1 / sampleRate;
             phaseInc2 = freq2 / sampleRate;
             phaseIncSub = freqSub / sampleRate;
             
-            phase1 = 0.0;
-            phase2 = 0.0;
-            phaseSub = 0.0;
-            noiseState = 0.0f;
+            phase1 = 0.0; phase2 = 0.0; phaseSub = 0.0;
+            noiseState = static_cast<float>(juce::Random::getSystemRandom().nextInt());
             
             adsr.noteOn();
         }
@@ -79,6 +78,8 @@ private:
     Waveform currentWaveform1 = Waveform::Sine;
     Waveform currentWaveform2 = Waveform::Saw;
     double currentSampleRate = 44100.0;
+
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDrive;
 
     inline float generateNoise(float& state) const
     {
