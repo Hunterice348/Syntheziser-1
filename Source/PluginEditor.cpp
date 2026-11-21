@@ -4,7 +4,7 @@
 HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor& p, juce::AudioProcessorValueTreeState& vts)
     : AudioProcessorEditor (&p), audioProcessor (p), parameters (vts)
 {
-    setSize (800, 400);
+    setSize (850, 420);
 
     auto setupSlider = [](juce::Slider& s) {
         s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -22,6 +22,9 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     setupSlider (subLevelSlider); addAndMakeVisible (subLevelSlider);
     setupSlider (noiseLevelSlider); addAndMakeVisible (noiseLevelSlider);
 
+    setupSlider (analogDriftSlider); addAndMakeVisible (analogDriftSlider);
+    setupSlider (masterDriveSlider); addAndMakeVisible (masterDriveSlider);
+
     waveform1Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     waveform2Box.addItemList ({ "Sine", "Saw", "Square", "Triangle" }, 1);
     addAndMakeVisible (waveform1Box);
@@ -37,6 +40,9 @@ HuntericeAbyssAudioProcessorEditor::HuntericeAbyssAudioProcessorEditor (Hunteric
     osc2DetuneAtt = std::make_unique<Attachment> (parameters, "osc2Detune", osc2DetuneSlider);
     subLevelAtt = std::make_unique<Attachment> (parameters, "subLevel", subLevelSlider);
     noiseLevelAtt = std::make_unique<Attachment> (parameters, "noiseLevel", noiseLevelSlider);
+    
+    analogDriftAtt = std::make_unique<Attachment> (parameters, "analogDrift", analogDriftSlider);
+    masterDriveAtt = std::make_unique<Attachment> (parameters, "masterDrive", masterDriveSlider);
     
     wf1Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform1", waveform1Box);
     wf2Att = std::make_unique<ComboBoxAttachment> (parameters, "waveform2", waveform2Box);
@@ -73,6 +79,10 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     decaySlider.setBounds (envArea.removeFromLeft (70));
     sustainSlider.setBounds (envArea.removeFromLeft (70));
     releaseSlider.setBounds (envArea.removeFromLeft (70));
+    
+    auto analogArea = area.removeFromLeft (120);
+    analogDriftSlider.setBounds (analogArea.removeFromLeft (60));
+    masterDriveSlider.setBounds (analogArea.removeFromLeft (60));
     
     volumeSlider.setBounds (area.removeFromLeft (80));
 }
