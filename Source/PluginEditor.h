@@ -8,7 +8,6 @@ class HuntericeAbyssAudioProcessorEditor : public juce::AudioProcessorEditor
 public:
     HuntericeAbyssAudioProcessorEditor (HuntericeAbyssAudioProcessor&, juce::AudioProcessorValueTreeState&);
     ~HuntericeAbyssAudioProcessorEditor() override;
-
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -24,21 +23,20 @@ private:
     juce::Slider lfoRateSlider, lfoDepthSlider;
     juce::Slider modLfoToPitchSlider, modLfoToCutoffSlider, modEnvToPitchSlider, modVelToCutoffSlider;
     
-    juce::ComboBox patch1SrcBox, patch1DstBox;
-    juce::Slider patch1AmtSlider;
-    juce::ComboBox patch2SrcBox, patch2DstBox;
-    juce::Slider patch2AmtSlider;
-    juce::ComboBox patch3SrcBox, patch3DstBox;
-    juce::Slider patch3AmtSlider;
-    juce::ComboBox patch4SrcBox, patch4DstBox;
-    juce::Slider patch4AmtSlider;
+    juce::ComboBox patch1SrcBox, patch1DstBox; juce::Slider patch1AmtSlider;
+    juce::ComboBox patch2SrcBox, patch2DstBox; juce::Slider patch2AmtSlider;
+    juce::ComboBox patch3SrcBox, patch3DstBox; juce::Slider patch3AmtSlider;
+    juce::ComboBox patch4SrcBox, patch4DstBox; juce::Slider patch4AmtSlider;
 
-    // Effects (Stage 11)
     juce::Slider distDriveSlider, distMixSlider;
     juce::Slider chorusRateSlider, chorusDepthSlider, chorusMixSlider;
     juce::Slider delayTimeSlider, delayFeedbackSlider, delayMixSlider;
     juce::Slider reverbDecaySlider, reverbMixSlider;
     juce::ToggleButton fxBypassButton;
+
+    // STAGE 12
+    juce::Slider unisonSpreadSlider;
+    juce::Slider macroMorphSlider;
 
     juce::ComboBox waveform1Box, waveform2Box, filterTypeBox, lfoWaveformBox;
 
@@ -54,21 +52,19 @@ private:
     std::unique_ptr<Attachment> lfoRateAtt, lfoDepthAtt;
     std::unique_ptr<Attachment> modLfoToPitchAtt, modLfoToCutoffAtt, modEnvToPitchAtt, modVelToCutoffAtt;
     
-    std::unique_ptr<ComboBoxAttachment> patch1SrcAtt, patch1DstAtt;
-    std::unique_ptr<Attachment> patch1AmtAtt;
-    std::unique_ptr<ComboBoxAttachment> patch2SrcAtt, patch2DstAtt;
-    std::unique_ptr<Attachment> patch2AmtAtt;
-    std::unique_ptr<ComboBoxAttachment> patch3SrcAtt, patch3DstAtt;
-    std::unique_ptr<Attachment> patch3AmtAtt;
-    std::unique_ptr<ComboBoxAttachment> patch4SrcAtt, patch4DstAtt;
-    std::unique_ptr<Attachment> patch4AmtAtt;
+    std::unique_ptr<ComboBoxAttachment> patch1SrcAtt, patch1DstAtt; std::unique_ptr<Attachment> patch1AmtAtt;
+    std::unique_ptr<ComboBoxAttachment> patch2SrcAtt, patch2DstAtt; std::unique_ptr<Attachment> patch2AmtAtt;
+    std::unique_ptr<ComboBoxAttachment> patch3SrcAtt, patch3DstAtt; std::unique_ptr<Attachment> patch3AmtAtt;
+    std::unique_ptr<ComboBoxAttachment> patch4SrcAtt, patch4DstAtt; std::unique_ptr<Attachment> patch4AmtAtt;
 
-    // Effects Attachments
     std::unique_ptr<Attachment> distDriveAtt, distMixAtt;
     std::unique_ptr<Attachment> chorusRateAtt, chorusDepthAtt, chorusMixAtt;
     std::unique_ptr<Attachment> delayTimeAtt, delayFeedbackAtt, delayMixAtt;
     std::unique_ptr<Attachment> reverbDecayAtt, reverbMixAtt;
     std::unique_ptr<ButtonAttachment> fxBypassAtt;
+
+    std::unique_ptr<Attachment> unisonSpreadAtt;
+    std::unique_ptr<Attachment> macroMorphAtt;
 
     std::unique_ptr<ComboBoxAttachment> wf1Att, wf2Att, filterTypeAtt, lfoWaveformAtt;
 
