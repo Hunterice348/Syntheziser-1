@@ -14,16 +14,12 @@ HuntericeAbyssAudioProcessor::HuntericeAbyssAudioProcessor()
 {
     for (auto& voice : voices)
     {
-        voice.adsrParams.attack = 0.01f;
-        voice.adsrParams.decay = 0.1f;
-        voice.adsrParams.sustain = 0.5f;
-        voice.adsrParams.release = 0.1f;
+        voice.adsrParams.attack = 0.01f; voice.adsrParams.decay = 0.1f;
+        voice.adsrParams.sustain = 0.5f; voice.adsrParams.release = 0.1f;
         voice.adsr.setParameters (voice.adsrParams);
         
-        voice.filterAdsrParams.attack = 0.01f;
-        voice.filterAdsrParams.decay = 0.1f;
-        voice.filterAdsrParams.sustain = 0.5f;
-        voice.filterAdsrParams.release = 0.1f;
+        voice.filterAdsrParams.attack = 0.01f; voice.filterAdsrParams.decay = 0.1f;
+        voice.filterAdsrParams.sustain = 0.5f; voice.filterAdsrParams.release = 0.1f;
         voice.filterAdsr.setParameters (voice.filterAdsrParams);
     }
 }
@@ -72,21 +68,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout HuntericeAbyssAudioProcessor
         params.push_back (std::make_unique<juce::AudioParameterFloat> ("patch" + juce::String(i) + "Amt", "Patch " + juce::String(i+1) + " Amount", 0.0f, 1.0f, 0.5f));
     }
     
-    // EFFECTS ENGINE (Stage 11)
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("distDrive", "Dist Drive", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("distMix", "Dist Mix", 0.0f, 1.0f, 0.0f));
-    
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusRate", "Chorus Rate", 0.1f, 5.0f, 1.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusDepth", "Chorus Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("chorusMix", "Chorus Mix", 0.0f, 1.0f, 0.0f));
-    
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("delayTime", "Delay Time", 0.01f, 1.0f, 0.3f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("delayFeedback", "Delay Feedback", 0.0f, 0.9f, 0.3f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("delayMix", "Delay Mix", 0.0f, 1.0f, 0.0f));
-    
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbDecay", "Reverb Decay", 0.0f, 0.95f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("reverbMix", "Reverb Mix", 0.0f, 1.0f, 0.0f));
-    
     params.push_back (std::make_unique<juce::AudioParameterBool> ("fxBypass", "FX Bypass", false));
     
     juce::StringArray waveforms = { "Sine", "Saw", "Square", "Triangle" };
@@ -109,14 +100,10 @@ void HuntericeAbyssAudioProcessor::prepareToPlay (double sampleRate, int samples
     smoothedCutoff.reset (sampleRate, 0.02);
     smoothedResonance.reset (sampleRate, 0.02);
     
-    filterL.reset();
-    filterR.reset();
-    delayL.reset();
-    delayR.reset();
-    chorusL.reset();
-    chorusR.reset();
-    reverbL.reset();
-    reverbR.reset();
+    filterL.reset(); filterR.reset();
+    delayL.reset(); delayR.reset();
+    chorusL.reset(); chorusR.reset();
+    reverbL.reset(); reverbR.reset();
     currentModWheel = 0.0f;
     
     for (auto& voice : voices)
@@ -133,18 +120,14 @@ inline float generateWaveform (float phase, HuntericeAbyssAudioProcessor::Wavefo
 {
     switch (wf)
     {
-        case HuntericeAbyssAudioProcessor::Waveform::Sine:
-            return std::sin (2.0f * juce::MathConstants<float>::pi * phase);
-        case HuntericeAbyssAudioProcessor::Waveform::Saw:
-            return 2.0f * phase - 1.0f;
-        case HuntericeAbyssAudioProcessor::Waveform::Square:
-            return (phase < 0.5f) ? 1.0f : -1.0f;
+        case HuntericeAbyssAudioProcessor::Waveform::Sine: return std::sin (2.0f * juce::MathConstants<float>::pi * phase);
+        case HuntericeAbyssAudioProcessor::Waveform::Saw: return 2.0f * phase - 1.0f;
+        case HuntericeAbyssAudioProcessor::Waveform::Square: return (phase < 0.5f) ? 1.0f : -1.0f;
         case HuntericeAbyssAudioProcessor::Waveform::Triangle:
-            if (phase < 0.25f)      return 4.0f * phase;
+            if (phase < 0.25f) return 4.0f * phase;
             else if (phase < 0.75f) return 2.0f - 4.0f * phase;
-            else                    return 4.0f * phase - 4.0f;
-        default:
-            return 0.0f;
+            else return 4.0f * phase - 4.0f;
+        default: return 0.0f;
     }
 }
 
@@ -193,7 +176,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     float modEnvToPitch = parameters.getRawParameterValue ("modEnvToPitch")->load();
     float modVelToCutoff = parameters.getRawParameterValue ("modVelToCutoff")->load();
     
-    // Effects Parameters (Stage 11)
     float distDrive = parameters.getRawParameterValue ("distDrive")->load();
     float distMix = parameters.getRawParameterValue ("distMix")->load();
     float chorusRate = parameters.getRawParameterValue ("chorusRate")->load();
@@ -227,16 +209,12 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     for (auto& voice : voices)
     {
-        voice.adsrParams.attack = attack;
-        voice.adsrParams.decay = decay;
-        voice.adsrParams.sustain = sustain;
-        voice.adsrParams.release = release;
+        voice.adsrParams.attack = attack; voice.adsrParams.decay = decay;
+        voice.adsrParams.sustain = sustain; voice.adsrParams.release = release;
         voice.adsr.setParameters (voice.adsrParams);
         
-        voice.filterAdsrParams.attack = fAttack;
-        voice.filterAdsrParams.decay = fDecay;
-        voice.filterAdsrParams.sustain = fSustain;
-        voice.filterAdsrParams.release = fRelease;
+        voice.filterAdsrParams.attack = fAttack; voice.filterAdsrParams.decay = fDecay;
+        voice.filterAdsrParams.sustain = fSustain; voice.filterAdsrParams.release = fRelease;
         voice.filterAdsr.setParameters (voice.filterAdsrParams);
     }
 
@@ -331,7 +309,6 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 for (int c = 0; c < NUM_PATCH_CABLES; ++c)
                 {
                     if (!patchCables[c].active) continue;
-                    
                     float srcVal = 0.0f;
                     switch (patchCables[c].source)
                     {
@@ -341,9 +318,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                         case ModSource::ModWheel: srcVal = currentModWheel; break;
                         default: break;
                     }
-
                     float modAmount = srcVal * patchCables[c].amount;
-
                     switch (patchCables[c].destination)
                     {
                         case ModDest::FilterCutoff: voiceCutoffMod += modAmount; break;
@@ -380,10 +355,7 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 }
 
                 float noise = 0.0f;
-                if (noiseLevel > 0.0f)
-                {
-                    noise = generateNoise (voices[v].noiseState);
-                }
+                if (noiseLevel > 0.0f) noise = generateNoise (voices[v].noiseState);
 
                 for (int c = 0; c < NUM_PATCH_CABLES; ++c)
                 {
@@ -401,10 +373,8 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                 float oscMix = (osc1 + (osc2 * osc2Level) + (sub * subLevel) + (noise * noiseLevel)) * env;
                 
                 float filtered = filter.process (oscMix, modulatedCutoff, currentResonance, filterDrive, currentFilterType);
-
                 float driveMultiplier = 1.0f + (currentDrive * 4.0f);
                 float saturatedMix = std::tanh (filtered * driveMultiplier);
-
                 float compensation = 1.0f / std::tanh (driveMultiplier);
                 if (driveMultiplier > 1.0f) saturatedMix *= compensation;
 
@@ -414,10 +384,8 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             float drySignal = mix * volume * (1.0f + masterVolMod);
             float fxSignal = drySignal;
 
-            // --- EFFECTS CHAIN (Stage 11) ---
             if (!fxBypass)
             {
-                // 1. Distortion
                 if (distMix > 0.0f)
                 {
                     float distMultiplier = 1.0f + (distDrive * 10.0f);
@@ -427,20 +395,18 @@ void HuntericeAbyssAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
                     fxSignal = fxSignal * (1.0f - distMix) + distorted * distMix;
                 }
 
-                // 2. Chorus
                 if (chorusMix > 0.0f)
                 {
-                    fxSignal = chorus.process (fxSignal, chorusRate, chorusDepth, chorusMix);
+                    // ✅ ИСПРАВЛЕНО: добавлен 5-й параметр currentSampleRate
+                    fxSignal = chorus.process (fxSignal, chorusRate, chorusDepth, chorusMix, currentSampleRate);
                 }
 
-                // 3. Delay
                 if (delayMix > 0.0f)
                 {
                     float delayed = delay.process (fxSignal, delaySamples, delayFeedback);
                     fxSignal = fxSignal * (1.0f - delayMix) + delayed * delayMix;
                 }
 
-                // 4. Reverb
                 if (reverbMix > 0.0f)
                 {
                     fxSignal = reverb.process (fxSignal, reverbDecay, reverbMix);
