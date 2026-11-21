@@ -156,7 +156,7 @@ private:
     juce::uint32 noteSerial = 0;
     float normGain = 1.0f;
 
-    // ============ DRUM MACHINE (Stage 14) ============
+    // ============ DRUM MACHINE ============
     struct DrumVoice
     {
         enum Type { Kick = 0, Snare, Hat, Clap, Tom, Perc };
@@ -173,6 +173,7 @@ private:
         int clapBurstCount = 0;
         float hpState = 0.0f;
         float hpIn = 0.0f;
+        float lpState = 0.0f; // Глобальный фильтр TONE
 
         void trigger (float vel, float lvl, float tn, float dec, float ton)
         {
@@ -189,6 +190,7 @@ private:
             clapBurstCount = 0;
             hpState = 0.0f;
             hpIn = 0.0f;
+            lpState = 0.0f;
         }
 
         float process (double sampleRate)
@@ -203,11 +205,20 @@ private:
             {
                 case Kick:
                 {
-                    const float baseFreq = 50.0f * std::pow (2.0f, tune / 12.0f);
-                    const float freq = baseFreq * (1.0f + (float) pitchEnv * 2.0f);
+                    const float baseFreq = 55.0f * std::pow (2.0f, tune / 12.0f);
+                    const float freq = baseFreq * (1.0f + (float) pitchEnv * 3.5f);
                     phase += freq / sampleRate;
                     if (phase >= 1.0) phase -= 1.0;
+                    
                     out = std::sin (6.2831853f * (float) phase);
+                    
+                    // Machinedrum/Electribe style click transient
+                    float clickPhase = phase * 12.0f;
+                    if (clickPhase >= 1.0f) clickPhase -= std::floor(clickPhase);
+                    float clickEnv = std::exp (-150.0f * (float) ampEnvPhase); 
+                    float click = std::sin (6.2831853f * clickPhase) * clickEnv;
+                    out += click * 0.5f;
+                    
                     pitchEnv -= pitchDecayRate;
                     if (pitchEnv < 0.0) pitchEnv = 0.0;
                     break;
@@ -277,6 +288,19 @@ private:
             {
                 active = false;
                 ampEnvVal = 0.0f;
+            }
+
+            // === ГЛОБАЛЬНЫЙ TONE ФИЛЬТР (Volca Drum / Electribe style) ===
+            float toneNorm = juce::jlimit (0.0f, 1.0f, tone);
+            float alpha = toneNorm * toneNorm;
+            lpState = lpState + alpha * (out - lpState);
+            out = lpState;
+
+            // Цифровой перегруз при высоком TONE (Monomachine style)
+            if (toneNorm > 0.65f)
+            {
+                float drive = (toneNorm - 0.65f) * 4.0f;
+                out = std::tanh (out * (1.0f + drive));
             }
 
             return out * level * ampEnvVal;
