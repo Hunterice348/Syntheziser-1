@@ -165,13 +165,16 @@ HuntericeAbyssAudioProcessorEditor::~HuntericeAbyssAudioProcessorEditor() {}
 void HuntericeAbyssAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xFF1E1E24));
-
     g.setColour (juce::Colours::white);
     g.setFont (juce::Font (24.0f, juce::Font::bold));
     g.drawText ("HUNTERICE ABYSS", getLocalBounds().removeFromTop (40), juce::Justification::centred);
-
     g.setColour (juce::Colour (0xFFB41E28));
     g.fillRect (0, 40, getWidth(), 2);
+    
+    // ✅ ИСПРАВЛЕНО: рисование секции эффектов перенесено сюда из resized()
+    auto fxArea = getLocalBounds().reduced (15).removeFromTop (380).removeFromBottom (200);
+    g.setColour (juce::Colour (0xFF2A2A32));
+    g.fillRect (fxArea);
 }
 
 void HuntericeAbyssAudioProcessorEditor::resized()
@@ -237,26 +240,4 @@ void HuntericeAbyssAudioProcessorEditor::resized()
     analogDriftSlider.setBounds (masterArea.removeFromLeft (33));
     masterDriveSlider.setBounds (masterArea.removeFromLeft (33));
     volumeSlider.setBounds (masterArea.removeFromLeft (33));
-
-    auto fxArea = getLocalBounds().reduced (15).removeFromTop (380).removeFromBottom (200);
-    
-    auto distArea = fxArea.removeFromLeft (150);
-    distDriveSlider.setBounds (distArea.removeFromLeft (75));
-    distMixSlider.setBounds (distArea.removeFromLeft (75));
-    
-    auto chorusArea = fxArea.removeFromLeft (180);
-    chorusRateSlider.setBounds (chorusArea.removeFromLeft (60));
-    chorusDepthSlider.setBounds (chorusArea.removeFromLeft (60));
-    chorusMixSlider.setBounds (chorusArea.removeFromLeft (60));
-    
-    auto delayArea = fxArea.removeFromLeft (200);
-    delayTimeSlider.setBounds (delayArea.removeFromLeft (66));
-    delayFeedbackSlider.setBounds (delayArea.removeFromLeft (66));
-    delayMixSlider.setBounds (delayArea.removeFromLeft (66));
-    
-    auto reverbArea = fxArea.removeFromLeft (150);
-    reverbDecaySlider.setBounds (reverbArea.removeFromLeft (75));
-    reverbMixSlider.setBounds (reverbArea.removeFromLeft (75));
-    
-    fxBypassButton.setBounds (fxArea.reduced (20));
 }
